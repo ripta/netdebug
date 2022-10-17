@@ -1,0 +1,16 @@
+images:
+  - gcr.io/$PROJECT_ID/$REPO_NAME:commit-$SHORT_SHA
+
+steps:
+  - id: Build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag
+      - gcr.io/$PROJECT_ID/$REPO_NAME:commit-$SHORT_SHA
+      - .
+  - id: Push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - gcr.io/$PROJECT_ID/$REPO_NAME:commit-$SHORT_SHA
