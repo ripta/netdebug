@@ -1,10 +1,13 @@
 package app
 
 import (
+	"errors"
 	goflag "flag"
+	"github.com/ripta/netdebug/pkg/dns"
 	"github.com/ripta/netdebug/pkg/echo"
 	"github.com/ripta/netdebug/pkg/listen"
 	"github.com/ripta/netdebug/pkg/send"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
@@ -24,15 +27,44 @@ func New() (*cobra.Command, CleanupFunc) {
 
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "netdebug",
-		Short: "A collection of network debugging tools",
+		Use:           "netdebug",
+		Short:         "A collection of network debugging tools",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
 	_ = cmd.MarkFlagFilename("config", "yaml", "json")
 
+	cmd.AddCommand(newDNSCommand())
 	cmd.AddCommand(newEchoCommand())
 	cmd.AddCommand(newListenCommand())
 	cmd.AddCommand(newSendCommand())
+
+	return cmd
+}
+
+func newDNSCommand() *cobra.Command {
+	d := dns.New()
+	cmd := &cobra.Command{
+		Use:     "dns",
+		Short:   "Perform DNS query",
+		Example: "netdebug dns -t mx r8y.org",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if len(args) < 1 || args[0] == "" {
+				return errors.New("name to query must not be empty")
+			}
+
+			d.QueryName = args[0]
+			if !strings.HasPrefix(d.QueryName, ".") {
+				d.QueryName += "."
+			}
+
+			return d.Run()
+		},
+	}
+
+	cmd.Flags().VarP(&d.QueryType, "type", "t", "Query type, e.g., mx, cname")
 
 	return cmd
 }
