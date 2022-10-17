@@ -2,6 +2,8 @@ package dns
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/miekg/dns"
 )
 
@@ -53,6 +55,7 @@ func (e *QueryType) String() string {
 }
 
 func (e *QueryType) Set(v string) error {
+	v = strings.ToUpper(v)
 	if _, ok := QueryTypeMap[v]; !ok {
 		queryTypes := []string{}
 		for k := range QueryTypeMap {
