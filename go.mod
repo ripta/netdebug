@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/miekg/dns v1.1.50
 	github.com/spf13/cobra v1.6.1
-	k8s.io/klog/v2 v2.80.1
+	k8s.io/klog/v2 v2.90.0
 )
 
 require (
