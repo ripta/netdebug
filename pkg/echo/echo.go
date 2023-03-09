@@ -41,6 +41,7 @@ func New() *Server {
 
 func (s *Server) Run() error {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/favicon.ico", http.NotFound)
 	mux.HandleFunc("/healthz", s.healthzHandler)
 	mux.HandleFunc("/", s.echoHandler)
 
