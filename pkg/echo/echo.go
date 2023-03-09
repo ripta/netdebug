@@ -33,9 +33,9 @@ func New() *Server {
 	return &Server{
 		Hostname:     hostname,
 		ListenPort:   8080,
-		PodName:      getEnvOrDefault("POD_NAME", "(undefined)"),
+		PodName:      getEnvOrDefault("POD_NAME", "($POD_NAME unset)"),
 		PodNamespace: string(ns),
-		PodNode:      getEnvOrDefault("NODE_NAME", "(undefined)"),
+		PodNode:      getEnvOrDefault("NODE_NAME", "($NODE_NAME unset)"),
 	}
 }
 
