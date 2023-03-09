@@ -1,6 +1,7 @@
 package echo
 
 import (
+	"crypto/tls"
 	"fmt"
 	"k8s.io/klog/v2"
 	"net/http"
@@ -61,6 +62,23 @@ func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "\n")
 
 	fmt.Fprint(w, "Request information:\n")
+	fmt.Fprintf(w, "\tProtocol: %s\n", r.Proto)
+	if r.TLS == nil {
+		fmt.Fprint(w, "\tTLS: none\n")
+	} else {
+		switch r.TLS.Version {
+		case tls.VersionTLS10:
+			fmt.Fprint(w, "\tTLS: TLSv1.0\n")
+		case tls.VersionTLS11:
+			fmt.Fprint(w, "\tTLS: TLSv1.1\n")
+		case tls.VersionTLS12:
+			fmt.Fprint(w, "\tTLS: TLSv1.2\n")
+		case tls.VersionTLS13:
+			fmt.Fprint(w, "\tTLS: TLSv1.3\n")
+		default:
+			fmt.Fprintf(w, "\tTLS: unknown (version=%d)\n", r.TLS.Version)
+		}
+	}
 	fmt.Fprintf(w, "\tRemote address: %s\n", r.RemoteAddr)
 	fmt.Fprintf(w, "\tMethod: %s\n", r.Method)
 	fmt.Fprintf(w, "\tRaw URI: %s\n", r.RequestURI)
