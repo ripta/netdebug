@@ -78,7 +78,8 @@ func newEchoCommand() *cobra.Command {
 		RunE:    runAdapter(s.Run),
 	}
 
-	cmd.Flags().IntVarP(&s.Port, "port", "p", s.Port, "Server port to listen on")
+	cmd.Flags().StringVarP(&s.ListenHost, "host", "H", s.ListenHost, "Host to listen on")
+	cmd.Flags().IntVarP(&s.ListenPort, "port", "p", s.ListenPort, "Server port to listen on")
 
 	return cmd
 }

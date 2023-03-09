@@ -12,10 +12,11 @@ import (
 
 type Server struct {
 	Hostname     string
+	ListenHost   string
+	ListenPort   int
 	PodName      string
 	PodNamespace string
 	PodNode      string
-	Port         int
 }
 
 func New() *Server {
@@ -31,10 +32,10 @@ func New() *Server {
 
 	return &Server{
 		Hostname:     hostname,
+		ListenPort:   8080,
 		PodName:      getEnvOrDefault("POD_NAME", "(undefined)"),
 		PodNamespace: string(ns),
 		PodNode:      getEnvOrDefault("NODE_NAME", "(undefined)"),
-		Port:         8080,
 	}
 }
 
@@ -43,8 +44,8 @@ func (s *Server) Run() error {
 	mux.HandleFunc("/healthz", s.healthzHandler)
 	mux.HandleFunc("/", s.echoHandler)
 
-	klog.InfoS("listening for HTTP requests", "port", s.Port)
-	return http.ListenAndServe(fmt.Sprintf(":%d", s.Port), mux)
+	klog.InfoS("listening for HTTP requests", "host", s.ListenHost, "port", s.ListenPort)
+	return http.ListenAndServe(fmt.Sprintf("%s:%d", s.ListenHost, s.ListenPort), mux)
 }
 
 func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
