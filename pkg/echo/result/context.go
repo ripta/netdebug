@@ -7,7 +7,12 @@ type contextKey int
 var resultKey contextKey
 
 func FromContext(ctx context.Context) Result {
-	return ctx.Value(resultKey).(Result)
+	val := ctx.Value(resultKey)
+	if val == nil {
+		return Result{}
+	}
+
+	return val.(Result)
 }
 
 func WithResult(ctx context.Context, res Result) context.Context {
