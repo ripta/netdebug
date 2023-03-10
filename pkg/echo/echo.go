@@ -2,7 +2,7 @@ package echo
 
 import (
 	"context"
-	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"sort"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -163,67 +163,74 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
-	klog.V(3).InfoS("serving request", "request_uri", r.RequestURI)
+	res := Result{
+		Kubernetes: KubernetesResult{
+			Hostname:     s.Hostname,
+			PodName:      s.PodName,
+			PodNamespace: s.PodNamespace,
+			PodNode:      s.PodNode,
+		},
+		Request: RequestResult{
+			Protocol:   r.Proto,
+			TLSVersion: tlsVersion(r.TLS),
+			RemoteAddr: r.RemoteAddr,
+			Method:     r.Method,
+			URI:        r.RequestURI,
+			Headers:    r.Header,
+		},
+		Runtime: RuntimeResult{
+			GoVersion:     runtime.Version(),
+			GoArch:        runtime.GOARCH,
+			GoOS:          runtime.GOOS,
+			NumCPUs:       runtime.NumCPU(),
+			NumGoroutines: runtime.NumGoroutine(),
+		},
+	}
+
+	if u := r.URL; u != nil {
+		res.Request.ParsedURL = ParsedURL{
+			Scheme:   u.Scheme,
+			Host:     u.Host,
+			Path:     u.Path,
+			RawPath:  u.RawPath,
+			RawQuery: u.RawQuery,
+			Query:    u.Query(),
+		}
+	} else {
+		res.Request.ParsedURL.Path = r.RequestURI
+	}
+
+	if info, ok := debug.ReadBuildInfo(); ok {
+		res.Runtime.MainPath = info.Path
+		res.Runtime.MainModule = info.Main.Path
+
+		res.Runtime.MainVersion = info.Main.Version
+		if info.Main.Version == "(devel)" {
+			for _, s := range info.Settings {
+				if s.Key == "vcs.revision" {
+					res.Runtime.MainVersion = s.Value
+				}
+				if s.Key == "vcs.modified" && s.Value == "true" {
+					res.Runtime.MainVersion += " (dirty)"
+				}
+			}
+		}
+	}
+
+	klog.V(3).InfoS("serving request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
 	w.WriteHeader(http.StatusOK)
 
-	fmt.Fprint(w, "Kubernetes details:\n")
-	fmt.Fprintf(w, "\tHostname: %s\n", s.Hostname)
-	fmt.Fprintf(w, "\tPod name: %s\n", s.PodName)
-	fmt.Fprintf(w, "\tNamespace: %s\n", s.PodNamespace)
-	fmt.Fprintf(w, "\tNode name: %s\n", s.PodNode)
-	fmt.Fprint(w, "\n")
-
-	fmt.Fprint(w, "Request information:\n")
-	fmt.Fprintf(w, "\tProtocol: %s\n", r.Proto)
-	if r.TLS == nil {
-		fmt.Fprint(w, "\tTLS: none\n")
-	} else {
-		switch r.TLS.Version {
-		case tls.VersionTLS10:
-			fmt.Fprint(w, "\tTLS: TLSv1.0\n")
-		case tls.VersionTLS11:
-			fmt.Fprint(w, "\tTLS: TLSv1.1\n")
-		case tls.VersionTLS12:
-			fmt.Fprint(w, "\tTLS: TLSv1.2\n")
-		case tls.VersionTLS13:
-			fmt.Fprint(w, "\tTLS: TLSv1.3\n")
-		default:
-			fmt.Fprintf(w, "\tTLS: unknown (version=%d)\n", r.TLS.Version)
+	if strings.HasSuffix(res.Request.ParsedURL.Path, ".json") || strings.Contains(r.Header.Get("Accept"), "application/json") {
+		if err := json.NewEncoder(w).Encode(res); err != nil {
+			klog.ErrorS(err, "encoding JSON output")
 		}
-	}
-	fmt.Fprintf(w, "\tRemote address: %s\n", r.RemoteAddr)
-	fmt.Fprintf(w, "\tMethod: %s\n", r.Method)
-	fmt.Fprintf(w, "\tRaw URI: %s\n", r.RequestURI)
-	if u := r.URL; u != nil {
-		fmt.Fprintf(w, "\t\tPath: %s\n", u.Path)
-		fmt.Fprintf(w, "\t\tQuery: %s\n", u.RawQuery)
-	}
-	fmt.Fprint(w, "\n")
 
-	names := []string{}
-	for hk := range r.Header {
-		names = append(names, hk)
+		return
 	}
-	sort.Strings(names)
 
-	fmt.Fprint(w, "Request headers:\n")
-	for _, hk := range names {
-		for _, hv := range r.Header[hk] {
-			fmt.Fprintf(w, "\t%s: %s\n", hk, hv)
-		}
+	if _, err := res.WriteTo(w); err != nil {
+		klog.ErrorS(err, "writing text output")
 	}
-	fmt.Fprint(w, "\n")
-
-	fmt.Fprint(w, "Runtime information:\n")
-	fmt.Fprintf(w, "\tVersion: %s\n", runtime.Version())
-	fmt.Fprintf(w, "\tArch/OS: %s/%s\n", runtime.GOARCH, runtime.GOOS)
-	fmt.Fprintf(w, "\tNumber of CPUs: %d\n", runtime.NumCPU())
-	fmt.Fprintf(w, "\tNumber of goroutines: %d\n", runtime.NumGoroutine())
-	if info, ok := debug.ReadBuildInfo(); ok {
-		fmt.Fprintf(w, "\tApp main module: %s\n", info.Main.Path)
-		fmt.Fprintf(w, "\tApp main version: %s\n", info.Main.Version)
-	}
-	fmt.Fprint(w, "\n")
 }
 
 func (s *Server) healthzHandler(w http.ResponseWriter, r *http.Request) {
