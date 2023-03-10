@@ -66,6 +66,7 @@ func newDNSCommand() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&d.ServerAddress, "dns-server-addr", "d", d.ServerAddress, "DNS server address with port, e.g., 127.0.0.1:53, [::1]:53")
 	cmd.Flags().VarP(&d.QueryType, "type", "t", "Query type, e.g., mx, cname")
 
 	return cmd

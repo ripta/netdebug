@@ -22,13 +22,17 @@ var defaultServerAddress = "127.0.0.1:53"
 func init() {
 	if cc, err := dns.ClientConfigFromFile("/etc/resolv.conf"); err == nil {
 		if len(cc.Servers) > 0 {
-			defaultServerAddress = cc.Servers[0] + ":53"
+			ip := net.ParseIP(cc.Servers[0])
+			if ip4 := ip.To4(); len(ip4) == net.IPv4len {
+				defaultServerAddress = cc.Servers[0] + ":53"
+			} else if len(ip) == net.IPv6len {
+				defaultServerAddress = "[" + ip.String() + "]:53"
+			}
 		}
 	}
 }
 
 func New() *Query {
-
 	return &Query{
 		ServerAddress: defaultServerAddress,
 
