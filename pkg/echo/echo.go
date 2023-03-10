@@ -137,19 +137,21 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/favicon.ico", http.NotFound)
 	mux.HandleFunc("/healthz", s.healthzHandler)
 	if s.Mode == ServerModeGRPC {
+		klog.InfoS("initializing gRPC handler")
+
 		gs := grpc.NewServer()
 		v1.RegisterEchoerServer(gs, &v1.Server{})
 		reflection.Register(gs)
 
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			ctx := r.Context()
-
 			res := s.getResultFromRequest(r)
 			klog.V(3).InfoS("serving gRPC request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
 
+			ctx := r.Context()
 			gs.ServeHTTP(w, r.WithContext(result.WithResult(ctx, res)))
 		})
 	} else {
+		klog.InfoS("initializing HTTP handler")
 		mux.HandleFunc("/", s.echoHandler)
 	}
 
