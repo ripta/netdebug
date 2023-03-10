@@ -5,9 +5,7 @@ import (
 	"runtime"
 	"runtime/debug"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/peer"
+	"github.com/ripta/netdebug/pkg/echo/result"
 )
 
 type Server struct {
@@ -15,22 +13,23 @@ type Server struct {
 }
 
 func (s *Server) Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, error) {
-	sts := grpc.ServerTransportStreamFromContext(ctx)
-
-	addr := ""
-	if p, ok := peer.FromContext(ctx); ok {
-		addr = p.Addr.String()
-	}
-
+	res := result.FromContext(ctx)
 	rsp := EchoResponse{
 		Query: req.Query,
 		Request: &RequestInfo{
-			Protocol:   "",
-			RemoteAddr: addr,
-			Method:     "",
-			Uri:        sts.Method(),
-			ParsedUrl:  nil,
-			Header:     buildKeyMultivalueFromContext(ctx),
+			Protocol:   res.Request.Protocol,
+			RemoteAddr: res.Request.RemoteAddr,
+			Method:     res.Request.Method,
+			Uri:        res.Request.URI,
+			Header:     buildKeyMultivalue(res.Request.Headers),
+			ParsedUrl: &ParsedURL{
+				Scheme:   res.Request.ParsedURL.Scheme,
+				Host:     res.Request.ParsedURL.Host,
+				Path:     res.Request.ParsedURL.Path,
+				RawPath:  res.Request.ParsedURL.RawPath,
+				RawQuery: res.Request.ParsedURL.RawQuery,
+				Query:    buildKeyMultivalue(res.Request.ParsedURL.Query),
+			},
 		},
 		Runtime: &RuntimeInfo{
 			GoVersion:     runtime.Version(),
@@ -61,12 +60,7 @@ func (s *Server) Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, err
 	return &rsp, nil
 }
 
-func buildKeyMultivalueFromContext(ctx context.Context) []*KeyMultivalue {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return nil
-	}
-
+func buildKeyMultivalue(md map[string][]string) []*KeyMultivalue {
 	kms := []*KeyMultivalue{}
 	for k, mv := range md {
 		kms = append(kms, &KeyMultivalue{

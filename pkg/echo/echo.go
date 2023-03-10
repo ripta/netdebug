@@ -143,7 +143,14 @@ func (s *Server) Run(ctx context.Context) error {
 		v1.RegisterEchoerServer(gs, &v1.Server{})
 		reflection.Register(gs)
 
-		mux.HandleFunc("/", gs.ServeHTTP)
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+
+			res := s.getResultFromRequest(r)
+			klog.V(3).InfoS("serving gRPC request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
+
+			gs.ServeHTTP(w, r.WithContext(result.WithResult(ctx, res)))
+		})
 	} else {
 		mux.HandleFunc("/", s.echoHandler)
 	}
@@ -257,7 +264,7 @@ func (s *Server) getResultFromRequest(r *http.Request) result.Result {
 func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
 	res := s.getResultFromRequest(r)
 
-	klog.V(3).InfoS("serving request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
+	klog.V(3).InfoS("serving HTTP request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
 	w.WriteHeader(http.StatusOK)
 
 	if strings.HasSuffix(res.Request.ParsedURL.Path, ".json") || strings.Contains(r.Header.Get("Accept"), "application/json") {
