@@ -10,8 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -204,61 +202,16 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) getResultFromRequest(r *http.Request) result.Result {
-	res := result.Result{
+	return result.Result{
 		Kubernetes: result.KubernetesResult{
 			Hostname:     s.Hostname,
 			PodName:      s.PodName,
 			PodNamespace: s.PodNamespace,
 			PodNode:      s.PodNode,
 		},
-		Request: result.RequestResult{
-			Protocol:   r.Proto,
-			TLSVersion: result.TLSVersion(r.TLS),
-			RemoteAddr: r.RemoteAddr,
-			Method:     r.Method,
-			URI:        r.RequestURI,
-			Headers:    r.Header,
-		},
-		Runtime: result.RuntimeResult{
-			GoVersion:     runtime.Version(),
-			GoArch:        runtime.GOARCH,
-			GoOS:          runtime.GOOS,
-			NumCPUs:       runtime.NumCPU(),
-			NumGoroutines: runtime.NumGoroutine(),
-		},
+		Request: result.GetRequestResult(r),
+		Runtime: result.GetRuntimeResult(),
 	}
-
-	if u := r.URL; u != nil {
-		res.Request.ParsedURL = result.ParsedURL{
-			Scheme:   u.Scheme,
-			Host:     u.Host,
-			Path:     u.Path,
-			RawPath:  u.RawPath,
-			RawQuery: u.RawQuery,
-			Query:    u.Query(),
-		}
-	} else {
-		res.Request.ParsedURL.Path = r.RequestURI
-	}
-
-	if info, ok := debug.ReadBuildInfo(); ok {
-		res.Runtime.MainPath = info.Path
-		res.Runtime.MainModule = info.Main.Path
-
-		res.Runtime.MainVersion = info.Main.Version
-		if info.Main.Version == "(devel)" {
-			for _, s := range info.Settings {
-				if s.Key == "vcs.revision" {
-					res.Runtime.MainVersion = s.Value
-				}
-				if s.Key == "vcs.modified" && s.Value == "true" {
-					res.Runtime.MainVersion += " (dirty)"
-				}
-			}
-		}
-	}
-
-	return res
 }
 
 func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
