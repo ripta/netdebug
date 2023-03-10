@@ -42,11 +42,13 @@ type ServerMode enumflag.Flag
 const (
 	ServerModeHTTP ServerMode = iota
 	ServerModeGRPC
+	ServerModeBoth
 )
 
 var ServerModeOptions = map[ServerMode][]string{
 	ServerModeHTTP: {"", "http"},
 	ServerModeGRPC: {"grpc"},
+	ServerModeBoth: {"grpc+http", "both"},
 }
 
 func ServerModeVar(flags *pflag.FlagSet, sm *ServerMode, name, usage string) {
@@ -83,7 +85,7 @@ func (s *Server) Run(ctx context.Context) error {
 		return errors.New("--tls-autogenerate cannot be combined with --tls-key-file and --tls-cert-file")
 	} else if (s.TLSCertPath != "") != (s.TLSKeyPath != "") {
 		return errors.New("--tls-key-file and --tls-cert-file must both be empty or both be specified")
-	} else if s.Mode == ServerModeGRPC && s.TLSKeyPath == "" && !s.TLSAutogen {
+	} else if s.Mode != ServerModeHTTP && s.TLSKeyPath == "" && !s.TLSAutogen {
 		return errors.New("--mode=grpc currently requires TLS to be enabled (--tls-{cert,key}-file or --tls-autogenerate)")
 	}
 
@@ -138,7 +140,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/favicon.ico", http.NotFound)
 	mux.HandleFunc("/healthz", s.healthzHandler)
-	if s.Mode == ServerModeGRPC {
+	if s.Mode == ServerModeGRPC || s.Mode == ServerModeBoth {
 		klog.InfoS("initializing gRPC handler")
 
 		gs := grpc.NewServer()
@@ -146,6 +148,11 @@ func (s *Server) Run(ctx context.Context) error {
 		reflection.Register(gs)
 
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if s.Mode == ServerModeBoth && r.Header.Get("Content-Type") != "application/grpc" {
+				s.echoHandler(w, r)
+				return
+			}
+
 			res := s.getResultFromRequest(r)
 			klog.V(3).InfoS("serving gRPC request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
 
