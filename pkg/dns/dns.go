@@ -2,9 +2,10 @@ package dns
 
 import (
 	"fmt"
-	"github.com/miekg/dns"
 	"net"
 	"time"
+
+	"github.com/miekg/dns"
 )
 
 type Query struct {

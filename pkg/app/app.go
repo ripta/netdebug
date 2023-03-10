@@ -1,16 +1,18 @@
 package app
 
 import (
+	"context"
 	"errors"
 	goflag "flag"
-	"github.com/ripta/netdebug/pkg/dns"
-	"github.com/ripta/netdebug/pkg/echo"
-	"github.com/ripta/netdebug/pkg/listen"
-	"github.com/ripta/netdebug/pkg/send"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
+
+	"github.com/ripta/netdebug/pkg/dns"
+	"github.com/ripta/netdebug/pkg/echo"
+	"github.com/ripta/netdebug/pkg/listen"
+	"github.com/ripta/netdebug/pkg/send"
 )
 
 type CleanupFunc func()
@@ -78,7 +80,11 @@ func newEchoCommand() *cobra.Command {
 		RunE:    runAdapter(s.Run),
 	}
 
-	cmd.Flags().IntVarP(&s.Port, "port", "p", s.Port, "Server port to listen on")
+	cmd.Flags().StringVarP(&s.ListenHost, "host", "H", s.ListenHost, "Host to listen on")
+	cmd.Flags().IntVarP(&s.ListenPort, "port", "p", s.ListenPort, "Server port to listen on")
+	cmd.Flags().BoolVar(&s.TLSAutogen, "tls-autogenerate", s.TLSAutogen, "Automatically generate TLS key and cert")
+	cmd.Flags().StringVar(&s.TLSKeyPath, "tls-key-file", s.TLSKeyPath, "Path to TLS key")
+	cmd.Flags().StringVar(&s.TLSCertPath, "tls-cert-file", s.TLSCertPath, "Path to TLS cert")
 
 	return cmd
 }
@@ -114,8 +120,8 @@ func newSendCommand() *cobra.Command {
 	return cmd
 }
 
-func runAdapter(f func() error) func(*cobra.Command, []string) error {
-	return func(_ *cobra.Command, _ []string) error {
-		return f()
+func runAdapter(f func(ctx context.Context) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		return f(cmd.Context())
 	}
 }

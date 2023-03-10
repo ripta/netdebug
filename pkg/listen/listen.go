@@ -2,11 +2,13 @@ package listen
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
-	"k8s.io/klog/v2"
 	"net"
 	"time"
+
+	"k8s.io/klog/v2"
 )
 
 type Server struct {
@@ -23,7 +25,7 @@ func New() *Server {
 	}
 }
 
-func (s *Server) Run() error {
+func (s *Server) Run(_ context.Context) error {
 	// TODO(ripta): handle non-TCP case
 	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
 

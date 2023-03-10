@@ -1,6 +1,7 @@
 package send
 
 import (
+	"context"
 	"io"
 	"net"
 	"os"
@@ -18,7 +19,7 @@ func New() *Client {
 	}
 }
 
-func (c *Client) Run() error {
+func (c *Client) Run(_ context.Context) error {
 	conn, err := net.Dial(c.Network, c.Address)
 	if err != nil {
 		return err
