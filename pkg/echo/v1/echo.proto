@@ -41,7 +41,7 @@ message ParsedURL {
   string path = 3;
   string raw_path = 4;
   string raw_query = 5;
-  KeyMultivalue query = 6;
+  repeated KeyMultivalue query = 6;
 }
 
 message KeyMultivalue {
