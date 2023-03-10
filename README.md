@@ -25,16 +25,31 @@ netdebug echo --host=127.0.0.1
 
 # Run HTTP/2 with self-signed certificate, port 8443
 netdebug echo --tls-autogenerate --port=8443
-
-# Run gRPC with self-signed certificate, port 8443
-netdebug echo --tls-autogenerate --port=8443 --mode=grpc
 ```
 
 gRPC mode has server reflection enabled, and thus you can:
 
 ```
+# Run gRPC with self-signed certificate, port 8443
+netdebug echo --tls-autogenerate --port=8443 --mode=grpc
+
+# and then...
 grpcurl -insecure localhost:8443 list
 grpcurl -insecure -d '{"query":"deadbeef"}' -rpc-header 'x-foo-id: bar-123' localhost:8443 pkg.echo.v1.Echoer.Echo
+```
+
+There's also a grpc and HTTP mode:
+
+```
+# Run gRPC and HTTP with self-signed certificate, port 8443
+netdebug echo --tls-autogenerate --port=8443 --mode=grpc+http
+
+# gRPCurl will still work:
+grpcurl -insecure localhost:8443 list
+
+# as will regular curl with HTTP/1 and HTTP/2
+curl --http1.1 -k https://localhost:8443/
+curl --http2 -k https://localhost:8443/
 ```
 
 ## `listen` and `send`
