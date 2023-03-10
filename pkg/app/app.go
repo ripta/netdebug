@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	goflag "flag"
 	"github.com/ripta/netdebug/pkg/dns"
@@ -118,8 +119,8 @@ func newSendCommand() *cobra.Command {
 	return cmd
 }
 
-func runAdapter(f func() error) func(*cobra.Command, []string) error {
-	return func(_ *cobra.Command, _ []string) error {
-		return f()
+func runAdapter(f func(ctx context.Context) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		return f(cmd.Context())
 	}
 }

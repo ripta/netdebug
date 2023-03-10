@@ -1,16 +1,21 @@
 package echo
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"k8s.io/klog/v2"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"sort"
+	"sync"
+	"syscall"
 )
 
 type Server struct {
@@ -45,7 +50,10 @@ func New() *Server {
 	}
 }
 
-func (s *Server) Run() error {
+func (s *Server) Run(ctx context.Context) error {
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	if s.TLSAutogen && s.TLSCertPath != "" && s.TLSKeyPath != "" {
 		return errors.New("--tls-autogenerate cannot be combined with --tls-key-file and --tls-cert-file")
 	} else if (s.TLSCertPath != "") != (s.TLSKeyPath != "") {
@@ -60,7 +68,7 @@ func (s *Server) Run() error {
 
 		klog.InfoS("generating self-signed certificates", "tls_dir", tlsDir)
 		defer func() {
-			klog.InfoS("removing self-signed certificates", "tls_dir", tlsDir)
+			klog.InfoS("cleaning up self-signed certificates", "tls_dir", tlsDir)
 			os.RemoveAll(tlsDir)
 		}()
 
@@ -106,13 +114,51 @@ func (s *Server) Run() error {
 	mux.HandleFunc("/", s.echoHandler)
 
 	addr := fmt.Sprintf("%s:%d", s.ListenHost, s.ListenPort)
-	if s.TLSKeyPath != "" && s.TLSCertPath != "" {
-		klog.InfoS("listening for HTTP requests with TLS", "addr", addr, "tls_cert_path", s.TLSCertPath)
-		return http.ListenAndServeTLS(addr, s.TLSCertPath, s.TLSKeyPath, mux)
+	server := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+		BaseContext: func(_ net.Listener) context.Context {
+			return ctx
+		},
 	}
 
-	klog.InfoS("listening for HTTP requests", "addr", addr)
-	return http.ListenAndServe(addr, mux)
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		klog.InfoS("waiting for shut down signal")
+		<-ctx.Done()
+
+		klog.InfoS("shutting down")
+		if err := server.Shutdown(context.Background()); err != nil {
+			klog.ErrorS(err, "during shutdown")
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		if s.TLSKeyPath != "" && s.TLSCertPath != "" {
+			klog.InfoS("listening for HTTP requests with TLS", "addr", addr)
+			if err := server.ListenAndServeTLS(s.TLSCertPath, s.TLSKeyPath); err != nil && err != http.ErrServerClosed {
+				klog.ErrorS(err, "after serving with TLS")
+			}
+			return
+		}
+
+		klog.InfoS("listening for HTTP requests", "addr", addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			klog.ErrorS(err, "after serving")
+		}
+	}()
+
+	wg.Wait()
+
+	klog.Info("shut down complete")
+	return nil
 }
 
 func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
