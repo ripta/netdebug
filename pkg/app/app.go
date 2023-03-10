@@ -80,6 +80,9 @@ func newEchoCommand() *cobra.Command {
 
 	cmd.Flags().StringVarP(&s.ListenHost, "host", "H", s.ListenHost, "Host to listen on")
 	cmd.Flags().IntVarP(&s.ListenPort, "port", "p", s.ListenPort, "Server port to listen on")
+	cmd.Flags().BoolVar(&s.TLSAutogen, "tls-autogenerate", s.TLSAutogen, "Automatically generate TLS key and cert")
+	cmd.Flags().StringVar(&s.TLSKeyPath, "tls-key-file", s.TLSKeyPath, "Path to TLS key")
+	cmd.Flags().StringVar(&s.TLSCertPath, "tls-cert-file", s.TLSCertPath, "Path to TLS cert")
 
 	return cmd
 }

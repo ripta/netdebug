@@ -2,10 +2,12 @@ package echo
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"k8s.io/klog/v2"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -18,6 +20,9 @@ type Server struct {
 	PodName      string
 	PodNamespace string
 	PodNode      string
+	TLSAutogen   bool
+	TLSCertPath  string
+	TLSKeyPath   string
 }
 
 func New() *Server {
@@ -41,13 +46,73 @@ func New() *Server {
 }
 
 func (s *Server) Run() error {
+	if s.TLSAutogen && s.TLSCertPath != "" && s.TLSKeyPath != "" {
+		return errors.New("--tls-autogenerate cannot be combined with --tls-key-file and --tls-cert-file")
+	} else if (s.TLSCertPath != "") != (s.TLSKeyPath != "") {
+		return errors.New("--tls-key-file and --tls-cert-file must both be empty or both be specified")
+	}
+
+	if s.TLSAutogen {
+		tlsDir, err := os.MkdirTemp("", "netdebug-echo-tls.*")
+		if err != nil {
+			return err
+		}
+
+		klog.InfoS("generating self-signed certificates", "tls_dir", tlsDir)
+		defer func() {
+			klog.InfoS("removing self-signed certificates", "tls_dir", tlsDir)
+			os.RemoveAll(tlsDir)
+		}()
+
+		klog.Info("generating CA certificate")
+		caCert, err := generateCACert()
+		if err != nil {
+			return fmt.Errorf("generate CA cert: %w", err)
+		}
+
+		klog.Info("generating server certificate")
+		servCert, err := generateServerCert(caCert)
+		if err != nil {
+			return fmt.Errorf("generating server cert: %w", err)
+		}
+
+		caCertFile := filepath.Join(tlsDir, "ca.crt")
+		if err := os.WriteFile(caCertFile, caCert.CertPEM, 0o644); err != nil {
+			return fmt.Errorf("writing CA cert: %w", err)
+		}
+
+		caKeyFile := filepath.Join(tlsDir, "ca.key")
+		if err := os.WriteFile(caKeyFile, caCert.PrivatePEM, 0o600); err != nil {
+			return fmt.Errorf("writing CA key: %w", err)
+		}
+
+		servCertFile := filepath.Join(tlsDir, "server.crt")
+		if err := os.WriteFile(servCertFile, servCert.CertPEM, 0o644); err != nil {
+			return fmt.Errorf("writing server cert: %w", err)
+		}
+
+		servKeyFile := filepath.Join(tlsDir, "server.key")
+		if err := os.WriteFile(servKeyFile, servCert.PrivatePEM, 0o600); err != nil {
+			return fmt.Errorf("writing server key: %w", err)
+		}
+
+		s.TLSCertPath = servCertFile
+		s.TLSKeyPath = servKeyFile
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/favicon.ico", http.NotFound)
 	mux.HandleFunc("/healthz", s.healthzHandler)
 	mux.HandleFunc("/", s.echoHandler)
 
-	klog.InfoS("listening for HTTP requests", "host", s.ListenHost, "port", s.ListenPort)
-	return http.ListenAndServe(fmt.Sprintf("%s:%d", s.ListenHost, s.ListenPort), mux)
+	addr := fmt.Sprintf("%s:%d", s.ListenHost, s.ListenPort)
+	if s.TLSKeyPath != "" && s.TLSCertPath != "" {
+		klog.InfoS("listening for HTTP requests with TLS", "addr", addr, "tls_cert_path", s.TLSCertPath)
+		return http.ListenAndServeTLS(addr, s.TLSCertPath, s.TLSKeyPath, mux)
+	}
+
+	klog.InfoS("listening for HTTP requests", "addr", addr)
+	return http.ListenAndServe(addr, mux)
 }
 
 func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
