@@ -22,7 +22,8 @@ import (
 	"google.golang.org/grpc/reflection"
 	"k8s.io/klog/v2"
 
-	v1 "github.com/ripta/netdebug/pkg/echo/v1"
+	"github.com/ripta/netdebug/pkg/echo/result"
+	"github.com/ripta/netdebug/pkg/echo/v1"
 )
 
 type Server struct {
@@ -195,23 +196,23 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
-	res := Result{
-		Kubernetes: KubernetesResult{
+func (s *Server) getResultFromRequest(r *http.Request) result.Result {
+	res := result.Result{
+		Kubernetes: result.KubernetesResult{
 			Hostname:     s.Hostname,
 			PodName:      s.PodName,
 			PodNamespace: s.PodNamespace,
 			PodNode:      s.PodNode,
 		},
-		Request: RequestResult{
+		Request: result.RequestResult{
 			Protocol:   r.Proto,
-			TLSVersion: tlsVersion(r.TLS),
+			TLSVersion: result.TLSVersion(r.TLS),
 			RemoteAddr: r.RemoteAddr,
 			Method:     r.Method,
 			URI:        r.RequestURI,
 			Headers:    r.Header,
 		},
-		Runtime: RuntimeResult{
+		Runtime: result.RuntimeResult{
 			GoVersion:     runtime.Version(),
 			GoArch:        runtime.GOARCH,
 			GoOS:          runtime.GOOS,
@@ -221,7 +222,7 @@ func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if u := r.URL; u != nil {
-		res.Request.ParsedURL = ParsedURL{
+		res.Request.ParsedURL = result.ParsedURL{
 			Scheme:   u.Scheme,
 			Host:     u.Host,
 			Path:     u.Path,
@@ -249,6 +250,12 @@ func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	return res
+}
+
+func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
+	res := s.getResultFromRequest(r)
 
 	klog.V(3).InfoS("serving request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
 	w.WriteHeader(http.StatusOK)
