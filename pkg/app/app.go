@@ -86,6 +86,8 @@ func newEchoCommand() *cobra.Command {
 	cmd.Flags().StringVar(&s.TLSKeyPath, "tls-key-file", s.TLSKeyPath, "Path to TLS key")
 	cmd.Flags().StringVar(&s.TLSCertPath, "tls-cert-file", s.TLSCertPath, "Path to TLS cert")
 
+	echo.ServerModeVar(cmd.Flags(), &s.Mode, "mode", "Server mode: http, grpc")
+
 	return cmd
 }
 

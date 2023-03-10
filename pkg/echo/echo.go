@@ -16,19 +16,43 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/spf13/pflag"
+	"github.com/thediveo/enumflag/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 	"k8s.io/klog/v2"
+
+	v1 "github.com/ripta/netdebug/pkg/echo/v1"
 )
 
 type Server struct {
 	Hostname     string
 	ListenHost   string
 	ListenPort   int
+	Mode         ServerMode
 	PodName      string
 	PodNamespace string
 	PodNode      string
 	TLSAutogen   bool
 	TLSCertPath  string
 	TLSKeyPath   string
+}
+
+type ServerMode enumflag.Flag
+
+const (
+	ServerModeHTTP ServerMode = iota
+	ServerModeGRPC
+)
+
+var ServerModeOptions = map[ServerMode][]string{
+	ServerModeHTTP: {"", "http"},
+	ServerModeGRPC: {"grpc"},
+}
+
+func ServerModeVar(flags *pflag.FlagSet, sm *ServerMode, name, usage string) {
+	f := enumflag.New(sm, name, ServerModeOptions, enumflag.EnumCaseInsensitive)
+	flags.Var(f, name, usage)
 }
 
 func New() *Server {
@@ -45,6 +69,7 @@ func New() *Server {
 	return &Server{
 		Hostname:     hostname,
 		ListenPort:   8080,
+		Mode:         ServerModeHTTP,
 		PodName:      getEnvOrDefault("POD_NAME", "($POD_NAME unset)"),
 		PodNamespace: string(ns),
 		PodNode:      getEnvOrDefault("NODE_NAME", "($NODE_NAME unset)"),
@@ -112,7 +137,15 @@ func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/favicon.ico", http.NotFound)
 	mux.HandleFunc("/healthz", s.healthzHandler)
-	mux.HandleFunc("/", s.echoHandler)
+	if s.Mode == ServerModeGRPC {
+		gs := grpc.NewServer()
+		v1.RegisterEchoerServer(gs, &v1.Server{})
+		reflection.Register(gs)
+
+		mux.HandleFunc("/", gs.ServeHTTP)
+	} else {
+		mux.HandleFunc("/", s.echoHandler)
+	}
 
 	addr := fmt.Sprintf("%s:%d", s.ListenHost, s.ListenPort)
 	server := &http.Server{
