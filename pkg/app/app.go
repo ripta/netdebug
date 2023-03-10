@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	goflag "flag"
-	"github.com/ripta/netdebug/pkg/dns"
-	"github.com/ripta/netdebug/pkg/echo"
-	"github.com/ripta/netdebug/pkg/listen"
-	"github.com/ripta/netdebug/pkg/send"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
+
+	"github.com/ripta/netdebug/pkg/dns"
+	"github.com/ripta/netdebug/pkg/echo"
+	"github.com/ripta/netdebug/pkg/listen"
+	"github.com/ripta/netdebug/pkg/send"
 )
 
 type CleanupFunc func()

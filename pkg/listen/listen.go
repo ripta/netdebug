@@ -5,9 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"k8s.io/klog/v2"
 	"net"
 	"time"
+
+	"k8s.io/klog/v2"
 )
 
 type Server struct {

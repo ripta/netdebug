@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/ripta/netdebug/pkg/app"
 	"math/rand"
 	"os"
 	"time"
+
+	"github.com/ripta/netdebug/pkg/app"
 )
 
 func main() {

@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"k8s.io/klog/v2"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +15,8 @@ import (
 	"sort"
 	"sync"
 	"syscall"
+
+	"k8s.io/klog/v2"
 )
 
 type Server struct {
