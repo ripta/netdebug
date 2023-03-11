@@ -148,7 +148,7 @@ func (s *Server) Run(ctx context.Context) error {
 		reflection.Register(gs)
 
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if s.Mode == ServerModeBoth && r.Header.Get("Content-Type") != "application/grpc" {
+			if s.Mode == ServerModeBoth && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
 				s.echoHandler(w, r)
 				return
 			}
