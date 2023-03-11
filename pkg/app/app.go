@@ -66,6 +66,7 @@ func newDNSCommand() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&d.ServerAddress, "dns-server-addr", "d", d.ServerAddress, "DNS server address with port, e.g., 127.0.0.1:53, [::1]:53")
 	cmd.Flags().VarP(&d.QueryType, "type", "t", "Query type, e.g., mx, cname")
 
 	return cmd
@@ -85,6 +86,8 @@ func newEchoCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&s.TLSAutogen, "tls-autogenerate", s.TLSAutogen, "Automatically generate TLS key and cert")
 	cmd.Flags().StringVar(&s.TLSKeyPath, "tls-key-file", s.TLSKeyPath, "Path to TLS key")
 	cmd.Flags().StringVar(&s.TLSCertPath, "tls-cert-file", s.TLSCertPath, "Path to TLS cert")
+
+	echo.ServerModeVar(cmd.Flags(), &s.Mode, "mode", "Server mode: http, grpc, grpc+http")
 
 	return cmd
 }

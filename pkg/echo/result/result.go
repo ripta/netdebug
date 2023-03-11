@@ -1,4 +1,4 @@
-package echo
+package result
 
 import (
 	"bytes"
@@ -100,7 +100,7 @@ type RuntimeResult struct {
 	MainVersion   string `json:"main_version"`
 }
 
-func tlsVersion(cs *tls.ConnectionState) string {
+func TLSVersion(cs *tls.ConnectionState) string {
 	if cs == nil {
 		return "none"
 	}

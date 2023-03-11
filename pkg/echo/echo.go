@@ -10,25 +10,50 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
 
+	"github.com/spf13/pflag"
+	"github.com/thediveo/enumflag/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 	"k8s.io/klog/v2"
+
+	"github.com/ripta/netdebug/pkg/echo/result"
+	"github.com/ripta/netdebug/pkg/echo/v1"
 )
 
 type Server struct {
 	Hostname     string
 	ListenHost   string
 	ListenPort   int
+	Mode         ServerMode
 	PodName      string
 	PodNamespace string
 	PodNode      string
 	TLSAutogen   bool
 	TLSCertPath  string
 	TLSKeyPath   string
+}
+
+type ServerMode enumflag.Flag
+
+const (
+	ServerModeHTTP ServerMode = iota
+	ServerModeGRPC
+	ServerModeBoth
+)
+
+var ServerModeOptions = map[ServerMode][]string{
+	ServerModeHTTP: {"", "http"},
+	ServerModeGRPC: {"grpc"},
+	ServerModeBoth: {"grpc+http", "both"},
+}
+
+func ServerModeVar(flags *pflag.FlagSet, sm *ServerMode, name, usage string) {
+	f := enumflag.New(sm, name, ServerModeOptions, enumflag.EnumCaseInsensitive)
+	flags.Var(f, name, usage)
 }
 
 func New() *Server {
@@ -45,6 +70,7 @@ func New() *Server {
 	return &Server{
 		Hostname:     hostname,
 		ListenPort:   8080,
+		Mode:         ServerModeHTTP,
 		PodName:      getEnvOrDefault("POD_NAME", "($POD_NAME unset)"),
 		PodNamespace: string(ns),
 		PodNode:      getEnvOrDefault("NODE_NAME", "($NODE_NAME unset)"),
@@ -59,6 +85,8 @@ func (s *Server) Run(ctx context.Context) error {
 		return errors.New("--tls-autogenerate cannot be combined with --tls-key-file and --tls-cert-file")
 	} else if (s.TLSCertPath != "") != (s.TLSKeyPath != "") {
 		return errors.New("--tls-key-file and --tls-cert-file must both be empty or both be specified")
+	} else if s.Mode != ServerModeHTTP && s.TLSKeyPath == "" && !s.TLSAutogen {
+		return errors.New("--mode=grpc currently requires TLS to be enabled (--tls-{cert,key}-file or --tls-autogenerate)")
 	}
 
 	if s.TLSAutogen {
@@ -112,7 +140,29 @@ func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/favicon.ico", http.NotFound)
 	mux.HandleFunc("/healthz", s.healthzHandler)
-	mux.HandleFunc("/", s.echoHandler)
+	if s.Mode == ServerModeGRPC || s.Mode == ServerModeBoth {
+		klog.InfoS("initializing gRPC handler")
+
+		gs := grpc.NewServer()
+		v1.RegisterEchoerServer(gs, &v1.Server{})
+		reflection.Register(gs)
+
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if s.Mode == ServerModeBoth && r.Header.Get("Content-Type") != "application/grpc" {
+				s.echoHandler(w, r)
+				return
+			}
+
+			res := s.getResultFromRequest(r)
+			klog.V(3).InfoS("serving gRPC request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
+
+			ctx := r.Context()
+			gs.ServeHTTP(w, r.WithContext(result.WithResult(ctx, res)))
+		})
+	} else {
+		klog.InfoS("initializing HTTP handler")
+		mux.HandleFunc("/", s.echoHandler)
+	}
 
 	addr := fmt.Sprintf("%s:%d", s.ListenHost, s.ListenPort)
 	server := &http.Server{
@@ -162,62 +212,23 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
-	res := Result{
-		Kubernetes: KubernetesResult{
+func (s *Server) getResultFromRequest(r *http.Request) result.Result {
+	return result.Result{
+		Kubernetes: result.KubernetesResult{
 			Hostname:     s.Hostname,
 			PodName:      s.PodName,
 			PodNamespace: s.PodNamespace,
 			PodNode:      s.PodNode,
 		},
-		Request: RequestResult{
-			Protocol:   r.Proto,
-			TLSVersion: tlsVersion(r.TLS),
-			RemoteAddr: r.RemoteAddr,
-			Method:     r.Method,
-			URI:        r.RequestURI,
-			Headers:    r.Header,
-		},
-		Runtime: RuntimeResult{
-			GoVersion:     runtime.Version(),
-			GoArch:        runtime.GOARCH,
-			GoOS:          runtime.GOOS,
-			NumCPUs:       runtime.NumCPU(),
-			NumGoroutines: runtime.NumGoroutine(),
-		},
+		Request: result.GetRequestResult(r),
+		Runtime: result.GetRuntimeResult(),
 	}
+}
 
-	if u := r.URL; u != nil {
-		res.Request.ParsedURL = ParsedURL{
-			Scheme:   u.Scheme,
-			Host:     u.Host,
-			Path:     u.Path,
-			RawPath:  u.RawPath,
-			RawQuery: u.RawQuery,
-			Query:    u.Query(),
-		}
-	} else {
-		res.Request.ParsedURL.Path = r.RequestURI
-	}
+func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
+	res := s.getResultFromRequest(r)
 
-	if info, ok := debug.ReadBuildInfo(); ok {
-		res.Runtime.MainPath = info.Path
-		res.Runtime.MainModule = info.Main.Path
-
-		res.Runtime.MainVersion = info.Main.Version
-		if info.Main.Version == "(devel)" {
-			for _, s := range info.Settings {
-				if s.Key == "vcs.revision" {
-					res.Runtime.MainVersion = s.Value
-				}
-				if s.Key == "vcs.modified" && s.Value == "true" {
-					res.Runtime.MainVersion += " (dirty)"
-				}
-			}
-		}
-	}
-
-	klog.V(3).InfoS("serving request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
+	klog.V(3).InfoS("serving HTTP request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
 	w.WriteHeader(http.StatusOK)
 
 	if strings.HasSuffix(res.Request.ParsedURL.Path, ".json") || strings.Contains(r.Header.Get("Accept"), "application/json") {

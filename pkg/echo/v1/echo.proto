@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+option go_package = "github.com/ripta/netdebug/pkg/echo/v1";
+package pkg.echo.v1;
+
+service Echoer {
+  rpc Echo (EchoRequest) returns (EchoResponse) {}
+}
+
+message EchoRequest {
+  string query = 1;
+}
+
+message EchoResponse {
+  string query = 1;
+
+  KubernetesInfo kubernetes = 2;
+  RequestInfo request = 3;
+  RuntimeInfo runtime = 4;
+}
+
+message KubernetesInfo {
+  string hostname = 1;
+  string pod_name = 2;
+  string pod_namespace = 3;
+  string pod_node = 4;
+}
+
+message RequestInfo {
+  string protocol = 1;
+  string remote_addr = 2;
+  string method = 3;
+  string uri = 4;
+  ParsedURL parsed_url = 5;
+  repeated KeyMultivalue header = 6;
+}
+
+message ParsedURL {
+  string scheme = 1;
+  string host = 2;
+  string path = 3;
+  string raw_path = 4;
+  string raw_query = 5;
+  repeated KeyMultivalue query = 6;
+}
+
+message KeyMultivalue {
+  string key = 1;
+  repeated string values = 2;
+}
+
+message RuntimeInfo {
+  string go_version = 1;
+  string go_arch = 2;
+  string go_os = 3;
+  int64 num_cpus = 4;
+  int64 num_goroutines = 5;
+  string main_module = 6;
+  string main_path = 7;
+  string main_version = 8;
+}
