@@ -72,7 +72,7 @@ func New() *Server {
 	return &Server{
 		Hostname:     hostname,
 		ListenPort:   8080,
-		Mode:         ServerModeHTTP,
+		Mode:         ServerModeBoth,
 		PodName:      getEnvOrDefault("POD_NAME", "($POD_NAME unset)"),
 		PodNamespace: string(ns),
 		PodNode:      getEnvOrDefault("NODE_NAME", "($NODE_NAME unset)"),
