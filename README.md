@@ -52,13 +52,30 @@ curl --http1.1 -k https://localhost:8443/
 curl --http2 -k https://localhost:8443/
 ```
 
-In fact, with the help of `protoc`, `grpcto`, and `curl`, you can hand-craft a gRPC request:
+In fact, with the help of `protoc`, `grpcto`, and `curl`, you can hand-craft a gRPC request over HTTPS:
 
 ```
+# Run gRPC and HTTP with self-signed certificate, port 8443
+netdebug echo --tls-autogenerate --port=8443 --mode=grpc+http
+
 echo 'query:"fizzbuzz"' \
     | protoc --encode pkg.echo.v1.EchoRequest ./pkg/echo/v1/echo.proto \
     | grpcto frame \
     | curl -X POST -k -v --data-binary @- -H "Content-Type: application/grpc" --raw https://localhost:8443/pkg.echo.v1.Echoer/Echo \
+    | grpcto unframe \
+    | protoc --decode_raw
+```
+
+or HTTP:
+
+```
+# Run gRPC and HTTP
+netdebug echo --port=8080 --mode=grpc+http
+
+echo 'query:"fizzbuzz"' \
+    | protoc --encode pkg.echo.v1.EchoRequest ./pkg/echo/v1/echo.proto \
+    | grpcto frame \
+    | curl -X POST -v --data-binary @- -H "Content-Type: application/grpc" --raw --http2 --http2-prior-knowledge http://localhost:8443/pkg.echo.v1.Echoer/Echo \
     | grpcto unframe \
     | protoc --decode_raw
 ```

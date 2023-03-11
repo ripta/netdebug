@@ -16,6 +16,8 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/thediveo/enumflag/v2"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"k8s.io/klog/v2"
@@ -70,7 +72,7 @@ func New() *Server {
 	return &Server{
 		Hostname:     hostname,
 		ListenPort:   8080,
-		Mode:         ServerModeHTTP,
+		Mode:         ServerModeBoth,
 		PodName:      getEnvOrDefault("POD_NAME", "($POD_NAME unset)"),
 		PodNamespace: string(ns),
 		PodNode:      getEnvOrDefault("NODE_NAME", "($NODE_NAME unset)"),
@@ -85,8 +87,6 @@ func (s *Server) Run(ctx context.Context) error {
 		return errors.New("--tls-autogenerate cannot be combined with --tls-key-file and --tls-cert-file")
 	} else if (s.TLSCertPath != "") != (s.TLSKeyPath != "") {
 		return errors.New("--tls-key-file and --tls-cert-file must both be empty or both be specified")
-	} else if s.Mode != ServerModeHTTP && s.TLSKeyPath == "" && !s.TLSAutogen {
-		return errors.New("--mode=grpc currently requires TLS to be enabled (--tls-{cert,key}-file or --tls-autogenerate)")
 	}
 
 	if s.TLSAutogen {
@@ -148,7 +148,7 @@ func (s *Server) Run(ctx context.Context) error {
 		reflection.Register(gs)
 
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if s.Mode == ServerModeBoth && r.Header.Get("Content-Type") != "application/grpc" {
+			if s.Mode == ServerModeBoth && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
 				s.echoHandler(w, r)
 				return
 			}
@@ -167,7 +167,7 @@ func (s *Server) Run(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", s.ListenHost, s.ListenPort)
 	server := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: h2c.NewHandler(mux, &http2.Server{}),
 		BaseContext: func(_ net.Listener) context.Context {
 			return ctx
 		},
