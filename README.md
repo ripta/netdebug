@@ -52,6 +52,17 @@ curl --http1.1 -k https://localhost:8443/
 curl --http2 -k https://localhost:8443/
 ```
 
+In fact, with the help of `protoc`, `grpcto`, and `curl`, you can hand-craft a gRPC request:
+
+```
+echo 'query:"fizzbuzz"' \
+    | protoc --encode pkg.echo.v1.EchoRequest ./pkg/echo/v1/echo.proto \
+    | grpcto frame \
+    | curl -X POST -k -v --data-binary @- -H "Content-Type: application/grpc" --raw https://localhost:8443/pkg.echo.v1.Echoer/Echo \
+    | grpcto unframe \
+    | protoc --decode_raw
+```
+
 ## `listen` and `send`
 
 Start listening in one terminal:
