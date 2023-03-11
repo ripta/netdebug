@@ -40,13 +40,15 @@ type Server struct {
 type ServerMode enumflag.Flag
 
 const (
-	ServerModeHTTP ServerMode = iota
+	ServerModeAuto ServerMode = iota
+	ServerModeHTTP
 	ServerModeGRPC
 	ServerModeBoth
 )
 
 var ServerModeOptions = map[ServerMode][]string{
-	ServerModeHTTP: {"", "http"},
+	ServerModeAuto: {"", "auto"},
+	ServerModeHTTP: {"http"},
 	ServerModeGRPC: {"grpc"},
 	ServerModeBoth: {"grpc+http", "both"},
 }
@@ -70,7 +72,7 @@ func New() *Server {
 	return &Server{
 		Hostname:     hostname,
 		ListenPort:   8080,
-		Mode:         ServerModeHTTP,
+		Mode:         ServerModeAuto,
 		PodName:      getEnvOrDefault("POD_NAME", "($POD_NAME unset)"),
 		PodNamespace: string(ns),
 		PodNode:      getEnvOrDefault("NODE_NAME", "($NODE_NAME unset)"),
@@ -85,7 +87,7 @@ func (s *Server) Run(ctx context.Context) error {
 		return errors.New("--tls-autogenerate cannot be combined with --tls-key-file and --tls-cert-file")
 	} else if (s.TLSCertPath != "") != (s.TLSKeyPath != "") {
 		return errors.New("--tls-key-file and --tls-cert-file must both be empty or both be specified")
-	} else if s.Mode != ServerModeHTTP && s.TLSKeyPath == "" && !s.TLSAutogen {
+	} else if (s.Mode == ServerModeBoth || s.Mode == ServerModeGRPC) && s.TLSKeyPath == "" && !s.TLSAutogen {
 		return errors.New("--mode=grpc currently requires TLS to be enabled (--tls-{cert,key}-file or --tls-autogenerate)")
 	}
 
@@ -135,6 +137,14 @@ func (s *Server) Run(ctx context.Context) error {
 
 		s.TLSCertPath = servCertFile
 		s.TLSKeyPath = servKeyFile
+	}
+
+	if s.Mode == ServerModeAuto {
+		if s.TLSCertPath != "" && s.TLSKeyPath != "" {
+			s.Mode = ServerModeBoth
+		} else {
+			s.Mode = ServerModeHTTP
+		}
 	}
 
 	mux := http.NewServeMux()
