@@ -64,7 +64,7 @@ func New() *Server {
 		hostname = fmt.Sprintf("(error: %v)", err)
 	}
 
-	ns, err := os.ReadFile("/run/secrets/kubernetes.io/serviceaccount/namespace")
+	ns, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
 	if err != nil {
 		ns = []byte(fmt.Sprintf("(error: %v)", err))
 	}
