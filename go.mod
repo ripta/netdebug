@@ -3,7 +3,7 @@ module github.com/ripta/netdebug
 go 1.19
 
 require (
-	github.com/miekg/dns v1.1.53
+	github.com/miekg/dns v1.1.54
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.2
