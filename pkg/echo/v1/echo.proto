@@ -5,6 +5,7 @@ package pkg.echo.v1;
 
 service Echoer {
   rpc Echo (EchoRequest) returns (EchoResponse) {}
+  rpc Status (StatusRequest) returns (StatusResponse) {}
 }
 
 message EchoRequest {
@@ -59,3 +60,18 @@ message RuntimeInfo {
   string main_path = 7;
   string main_version = 8;
 }
+
+// StatusRequest determines the error (if any) to return to the caller, representing
+// on-wire status that the caller expects from the server.
+message StatusRequest {
+  // force_grpc_status forces a status response conforming to the standard
+  // gRPC Core status codes: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+  // Following those standard status codes, a value of zero (or unset) will
+  // return OK.
+  uint32 force_grpc_status = 1;
+  // message is an optional string returned alongside the code.
+  string message = 2;
+}
+
+// StatusResponse is a (currently) empty gRPC message.
+message StatusResponse {}
