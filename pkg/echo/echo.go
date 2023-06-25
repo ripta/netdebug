@@ -19,6 +19,8 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 	"k8s.io/klog/v2"
 
@@ -146,6 +148,11 @@ func (s *Server) Run(ctx context.Context) error {
 		gs := grpc.NewServer()
 		v1.RegisterEchoerServer(gs, &v1.Server{})
 		reflection.Register(gs)
+
+		gh := health.NewServer()
+		gh.SetServingStatus(v1.Echoer_Echo_FullMethodName, grpc_health_v1.HealthCheckResponse_SERVING)
+		gh.SetServingStatus(v1.Echoer_Status_FullMethodName, grpc_health_v1.HealthCheckResponse_SERVING)
+		grpc_health_v1.RegisterHealthServer(gs, gh)
 
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			if s.Mode == ServerModeBoth && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
