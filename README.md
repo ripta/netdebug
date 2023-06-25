@@ -35,6 +35,14 @@ netdebug echo --tls-autogenerate --port=8443 --mode=grpc
 
 # and then...
 grpcurl -insecure localhost:8443 list
+```
+
+### `pkg.echo.v1.Echoer/Echo`
+
+```
+# Run gRPC with self-signed certificate, port 8443
+netdebug echo --tls-autogenerate --port=8443 --mode=grpc
+
 grpcurl -insecure -d '{"query":"deadbeef"}' -rpc-header 'x-foo-id: bar-123' localhost:8443 pkg.echo.v1.Echoer.Echo
 ```
 
@@ -78,6 +86,40 @@ echo 'query:"fizzbuzz"' \
     | curl -X POST -v --data-binary @- -H "Content-Type: application/grpc" --raw --http2 --http2-prior-knowledge http://localhost:8443/pkg.echo.v1.Echoer/Echo \
     | grpcto unframe \
     | protoc --decode_raw
+```
+
+### `pkg.echo.v1.Echoer/Status`
+
+There's also a `Status` procedure that allows you to request that the server return arbitrary errors:
+
+```
+# Run gRPC
+netdebug echo --port=8080 --mode=grpc
+
+grpcurl -v -plaintext -d '{"force_grpc_status":3,"message":"oopsie!"}' localhost:8080 pkg.echo.v1.Echoer/Status
+```
+
+which might return something like:
+
+```
+Resolved method descriptor:
+rpc Status ( .pkg.echo.v1.StatusRequest ) returns ( .pkg.echo.v1.StatusResponse );
+
+Request metadata to send:
+(empty)
+
+Response headers received:
+content-type: application/grpc
+trailer: Grpc-Status
+trailer: Grpc-Message
+trailer: Grpc-Status-Details-Bin
+
+Response trailers received:
+(empty)
+Sent 1 request and received 0 responses
+ERROR:
+  Code: InvalidArgument
+  Message: oopsie!
 ```
 
 ## `listen` and `send`
