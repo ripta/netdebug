@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Echoer_Echo_FullMethodName = "/pkg.echo.v1.Echoer/Echo"
+	Echoer_Echo_FullMethodName   = "/pkg.echo.v1.Echoer/Echo"
+	Echoer_Status_FullMethodName = "/pkg.echo.v1.Echoer/Status"
 )
 
 // EchoerClient is the client API for Echoer service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type EchoerClient interface {
 	Echo(ctx context.Context, in *EchoRequest, opts ...grpc.CallOption) (*EchoResponse, error)
+	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 }
 
 type echoerClient struct {
@@ -46,11 +48,21 @@ func (c *echoerClient) Echo(ctx context.Context, in *EchoRequest, opts ...grpc.C
 	return out, nil
 }
 
+func (c *echoerClient) Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, Echoer_Status_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EchoerServer is the server API for Echoer service.
 // All implementations must embed UnimplementedEchoerServer
 // for forward compatibility
 type EchoerServer interface {
 	Echo(context.Context, *EchoRequest) (*EchoResponse, error)
+	Status(context.Context, *StatusRequest) (*StatusResponse, error)
 	mustEmbedUnimplementedEchoerServer()
 }
 
@@ -60,6 +72,9 @@ type UnimplementedEchoerServer struct {
 
 func (UnimplementedEchoerServer) Echo(context.Context, *EchoRequest) (*EchoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Echo not implemented")
+}
+func (UnimplementedEchoerServer) Status(context.Context, *StatusRequest) (*StatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Status not implemented")
 }
 func (UnimplementedEchoerServer) mustEmbedUnimplementedEchoerServer() {}
 
@@ -92,6 +107,24 @@ func _Echoer_Echo_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Echoer_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EchoerServer).Status(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Echoer_Status_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EchoerServer).Status(ctx, req.(*StatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Echoer_ServiceDesc is the grpc.ServiceDesc for Echoer service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -102,6 +135,10 @@ var Echoer_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Echo",
 			Handler:    _Echoer_Echo_Handler,
+		},
+		{
+			MethodName: "Status",
+			Handler:    _Echoer_Status_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

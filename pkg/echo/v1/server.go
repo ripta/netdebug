@@ -5,6 +5,9 @@ import (
 	"runtime"
 	"runtime/debug"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/ripta/netdebug/pkg/echo/result"
 )
 
@@ -58,6 +61,11 @@ func (s *Server) Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, err
 	}
 
 	return &rsp, nil
+}
+
+func (s *Server) Status(_ context.Context, req *StatusRequest) (*StatusResponse, error) {
+	code := codes.Code(req.ForceGrpcStatus)
+	return &StatusResponse{}, status.Error(code, req.Message)
 }
 
 func buildKeyMultivalue(md map[string][]string) []*KeyMultivalue {
