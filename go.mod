@@ -10,7 +10,7 @@ require (
 	github.com/thediveo/enumflag/v2 v2.0.4
 	golang.org/x/net v0.11.0
 	google.golang.org/grpc v1.56.1
-	google.golang.org/protobuf v1.30.0
+	google.golang.org/protobuf v1.31.0
 	k8s.io/klog/v2 v2.100.1
 )
 
