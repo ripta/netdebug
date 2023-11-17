@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	_ "go.uber.org/automaxprocs"
+
 	"github.com/ripta/netdebug/pkg/app"
 )
 
