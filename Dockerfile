@@ -9,6 +9,6 @@ RUN go build ./cmd/netdebug
 
 ###
 
-FROM debian:bookworm-slim
+FROM gcr.io/distroless/static-debian12
 COPY --from=build /app/netdebug /app/netdebug
 ENTRYPOINT ["/app/netdebug"]
