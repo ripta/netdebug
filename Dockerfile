@@ -1,4 +1,4 @@
-FROM golang:1.19-bullseye AS build
+FROM golang:1.21-bookworm AS build
 
 RUN mkdir /app
 WORKDIR /app
@@ -9,6 +9,6 @@ RUN go build ./cmd/netdebug
 
 ###
 
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 COPY --from=build /app/netdebug /app/netdebug
 ENTRYPOINT ["/app/netdebug"]
