@@ -9,6 +9,7 @@ RUN go build ./cmd/netdebug
 
 ###
 
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/base-debian12
 COPY --from=build /app/netdebug /app/netdebug
+RUN ["/app/netdebug", "version"]
 ENTRYPOINT ["/app/netdebug"]

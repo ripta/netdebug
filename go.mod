@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/miekg/dns v1.1.57
+	github.com/ripta/rt v0.0.0-20231113203044-b47e6e65f82a
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.4

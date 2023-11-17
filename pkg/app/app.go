@@ -6,6 +6,7 @@ import (
 	goflag "flag"
 	"strings"
 
+	"github.com/ripta/rt/pkg/version"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 
@@ -41,6 +42,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newEchoCommand())
 	cmd.AddCommand(newListenCommand())
 	cmd.AddCommand(newSendCommand())
+	cmd.AddCommand(version.NewCommand())
 
 	return cmd
 }
