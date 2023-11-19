@@ -126,6 +126,7 @@ func (s *Server) initTracer(ctx context.Context) (func(context.Context), error) 
 	)
 
 	klog.InfoS("installing opentelemetry tracer provider")
+	otel.SetLogger(klog.NewKlogr())
 	otel.SetTracerProvider(prov)
 
 	cleanup := func(ctx context.Context) {
