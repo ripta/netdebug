@@ -7,7 +7,7 @@ require (
 	github.com/ripta/rt v0.0.0-20231113203044-b47e6e65f82a
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 	github.com/thediveo/enumflag/v2 v2.0.5
 	go.uber.org/automaxprocs v1.5.3
 	golang.org/x/net v0.22.0
