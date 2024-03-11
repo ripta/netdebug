@@ -12,7 +12,7 @@ require (
 	go.uber.org/automaxprocs v1.5.3
 	golang.org/x/net v0.22.0
 	google.golang.org/grpc v1.62.1
-	google.golang.org/protobuf v1.32.0
+	google.golang.org/protobuf v1.33.0
 	k8s.io/klog/v2 v2.120.1
 )
 
