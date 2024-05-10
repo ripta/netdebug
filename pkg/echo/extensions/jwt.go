@@ -3,6 +3,7 @@ package extensions
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -23,7 +24,7 @@ type JWTConfig struct {
 
 func JWT(jc JWTConfig) (result.ExtensionFunc, error) {
 	if jc.HeaderName == "" || jc.JWKSURL == "" || jc.Audience == "" {
-		return nil, ErrMisconfigured
+		return nil, fmt.Errorf("%w: header name, JWKS URL, and audience must be set", ErrMisconfigured)
 	}
 
 	ks := oidc.NewRemoteKeySet(context.Background(), jc.JWKSURL)
