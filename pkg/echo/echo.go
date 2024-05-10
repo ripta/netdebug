@@ -39,6 +39,7 @@ type Server struct {
 	TLSAutogen   bool
 	TLSCertPath  string
 	TLSKeyPath   string
+	Extensions   result.Extensions
 }
 
 type ServerMode enumflag.Flag
@@ -78,7 +79,12 @@ func New() *Server {
 		PodName:      getEnvOrDefault("POD_NAME", "($POD_NAME unset)"),
 		PodNamespace: string(ns),
 		PodNode:      getEnvOrDefault("NODE_NAME", "($NODE_NAME unset)"),
+		Extensions:   []result.ExtensionFunc{},
 	}
+}
+
+func (s *Server) InstallExtension(fn result.ExtensionFunc) {
+	s.Extensions = append(s.Extensions, fn)
 }
 
 func (s *Server) Run(ctx context.Context) error {
@@ -220,7 +226,17 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) getResultFromRequest(r *http.Request) result.Result {
+	exts := []result.ExtensionResult{}
+	for _, fn := range s.Extensions {
+		e, err := fn(r.Clone(context.Background()))
+		if err != nil {
+			klog.ErrorS(err, "extension error")
+		}
+		exts = append(exts, e...)
+	}
+
 	return result.Result{
+		Extensions: s.Extensions.GetResult(r),
 		Kubernetes: result.KubernetesResult{
 			Hostname:     s.Hostname,
 			PodName:      s.PodName,
