@@ -2,17 +2,23 @@ package result
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"sort"
+
+	"k8s.io/klog/v2"
 )
 
 type Result struct {
 	Kubernetes KubernetesResult `json:"kubernetes"`
 	Request    RequestResult    `json:"request"`
 	Runtime    RuntimeResult    `json:"runtime"`
+
+	Extensions []ExtensionResult `json:"extensions"`
 }
 
 var _ io.WriterTo = Result{}
@@ -60,7 +66,41 @@ func (r Result) WriteTo(w io.Writer) (int64, error) {
 	fmt.Fprintf(buf, "\tApp main version: %s\n", r.Runtime.MainVersion)
 	fmt.Fprint(buf, "\n")
 
+	for _, ext := range r.Extensions {
+		fmt.Fprintf(buf, "Extension %s:", ext.Name)
+		for k, vs := range ext.Info {
+			for _, v := range vs {
+				fmt.Fprintf(buf, "\t%s: %s\n", k, v)
+			}
+		}
+		fmt.Fprint(buf, "\n")
+	}
+
 	return buf.WriteTo(w)
+}
+
+type Extensions []ExtensionFunc
+
+func (es Extensions) GetResult(r *http.Request) []ExtensionResult {
+	results := []ExtensionResult{}
+	for _, fn := range es {
+		res, err := fn(r.Clone(context.Background()))
+		if err != nil {
+			klog.ErrorS(err, "extension error")
+			continue
+		}
+
+		results = append(results, res...)
+	}
+
+	return results
+}
+
+type ExtensionFunc func(*http.Request) ([]ExtensionResult, error)
+
+type ExtensionResult struct {
+	Name string              `json:"name"`
+	Info map[string][]string `json:"info"`
 }
 
 type KubernetesResult struct {
