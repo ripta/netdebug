@@ -12,6 +12,7 @@ import (
 
 	"github.com/ripta/netdebug/pkg/dns"
 	"github.com/ripta/netdebug/pkg/echo"
+	"github.com/ripta/netdebug/pkg/echo/extensions"
 	"github.com/ripta/netdebug/pkg/listen"
 	"github.com/ripta/netdebug/pkg/send"
 )
@@ -76,11 +77,24 @@ func newDNSCommand() *cobra.Command {
 
 func newEchoCommand() *cobra.Command {
 	s := echo.New()
+	jwtConf := extensions.JWTConfig{}
+
 	cmd := &cobra.Command{
 		Use:     "echo",
 		Short:   "HTTP echo server",
 		Example: "netdebug echo -v=3",
-		RunE:    runAdapter(s.Run),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if jwtConf.HeaderName != "" {
+				ext, err := extensions.JWT(jwtConf)
+				if err != nil {
+					return err
+				}
+
+				s.InstallExtension(ext)
+			}
+
+			return s.Run(cmd.Context())
+		},
 	}
 
 	cmd.Flags().StringVarP(&s.ListenHost, "host", "H", s.ListenHost, "Host to listen on")
@@ -88,6 +102,12 @@ func newEchoCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&s.TLSAutogen, "tls-autogenerate", s.TLSAutogen, "Automatically generate TLS key and cert")
 	cmd.Flags().StringVar(&s.TLSKeyPath, "tls-key-file", s.TLSKeyPath, "Path to TLS key")
 	cmd.Flags().StringVar(&s.TLSCertPath, "tls-cert-file", s.TLSCertPath, "Path to TLS cert")
+
+	cmd.Flags().StringVar(&jwtConf.HeaderName, "jwt-header-name", jwtConf.HeaderName, "JWT header name")
+	cmd.Flags().StringVar(&jwtConf.JWKSURL, "jwt-jwks-url", jwtConf.JWKSURL, "JWT JWKS URL")
+	cmd.Flags().StringVar(&jwtConf.IssuerURL, "jwt-issuer-url", jwtConf.IssuerURL, "JWT issuer URL")
+	cmd.Flags().StringVar(&jwtConf.Audience, "jwt-audience", jwtConf.Audience, "JWT audience")
+	cmd.Flags().StringSliceVar(&jwtConf.SigningAlgorithms, "jwt-signing-algorithms", jwtConf.SigningAlgorithms, "JWT supported signing algorithms")
 
 	echo.ServerModeVar(cmd.Flags(), &s.Mode, "mode", "Server mode: http, grpc, grpc+http")
 
