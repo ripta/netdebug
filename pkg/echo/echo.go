@@ -14,8 +14,15 @@ import (
 	"sync"
 	"syscall"
 
+	gctexporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
 	"github.com/spf13/pflag"
 	"github.com/thediveo/enumflag/v2"
+	"go.opentelemetry.io/contrib/detectors/gcp"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
@@ -40,6 +47,9 @@ type Server struct {
 	TLSCertPath  string
 	TLSKeyPath   string
 	Extensions   result.Extensions
+
+	OtelGCPProjectID string
+	OtelSampleRate   float64
 }
 
 type ServerMode enumflag.Flag
@@ -83,11 +93,60 @@ func New() *Server {
 	}
 }
 
+func (s *Server) initTracer(ctx context.Context) (func(context.Context), error) {
+	if s.OtelGCPProjectID == "" {
+		return nil, nil
+	}
+
+	exp, err := gctexporter.New(gctexporter.WithProjectID(s.OtelGCPProjectID))
+	if err != nil {
+		return nil, err
+	}
+
+	ropts := []resource.Option{
+		resource.WithTelemetrySDK(),
+		resource.WithDetectors(gcp.NewDetector()),
+		resource.WithAttributes(
+			semconv.ServiceName("echo"),
+			semconv.ServiceVersion("v0"),
+			semconv.ServiceNamespace(s.PodNamespace),
+			semconv.ServiceInstanceID(s.PodName),
+		),
+	}
+
+	res, err := resource.New(ctx, ropts...)
+	if err != nil {
+		return nil, err
+	}
+
+	prov := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(s.OtelSampleRate)),
+		sdktrace.WithBatcher(exp),
+		sdktrace.WithResource(res),
+	)
+
+	klog.InfoS("installing opentelemetry tracer provider")
+	otel.SetTracerProvider(prov)
+
+	cleanup := func(ctx context.Context) {
+		_ = prov.Shutdown(ctx)
+	}
+	return cleanup, nil
+}
+
 func (s *Server) InstallExtension(fn result.ExtensionFunc) {
 	s.Extensions = append(s.Extensions, fn)
 }
 
 func (s *Server) Run(ctx context.Context) error {
+	cleanup, err := s.initTracer(ctx)
+	if err != nil {
+		return err
+	}
+	if cleanup != nil {
+		defer cleanup(ctx)
+	}
+
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -151,7 +210,7 @@ func (s *Server) Run(ctx context.Context) error {
 	if s.Mode == ServerModeGRPC || s.Mode == ServerModeBoth {
 		klog.InfoS("initializing gRPC handler")
 
-		gs := grpc.NewServer()
+		gs := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 		v1.RegisterEchoerServer(gs, &v1.Server{})
 		reflection.Register(gs)
 
