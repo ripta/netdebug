@@ -107,6 +107,8 @@ func (s *Server) initTracer(ctx context.Context) (func(context.Context), error) 
 		resource.WithTelemetrySDK(),
 		resource.WithDetectors(gcp.NewDetector()),
 		resource.WithAttributes(
+			semconv.K8SNamespaceName(s.PodNamespace),
+			semconv.K8SPodName(s.PodName),
 			semconv.ServiceName("echo"),
 			semconv.ServiceVersion("v0"),
 			semconv.ServiceNamespace(s.PodNamespace),
