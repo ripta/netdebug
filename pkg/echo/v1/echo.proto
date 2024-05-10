@@ -18,6 +18,12 @@ message EchoResponse {
   KubernetesInfo kubernetes = 2;
   RequestInfo request = 3;
   RuntimeInfo runtime = 4;
+  repeated ExtendedInfo extensions = 5;
+}
+
+message ExtendedInfo {
+  string name = 1;
+  KeyMultivalue info = 2;
 }
 
 message KubernetesInfo {
