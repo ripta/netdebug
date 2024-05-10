@@ -67,7 +67,7 @@ func (r Result) WriteTo(w io.Writer) (int64, error) {
 	fmt.Fprint(buf, "\n")
 
 	for _, ext := range r.Extensions {
-		fmt.Fprintf(buf, "Extension %s:", ext.Name)
+		fmt.Fprintf(buf, "Extension %s:\n", ext.Name)
 		for k, vs := range ext.Info {
 			for _, v := range vs {
 				fmt.Fprintf(buf, "\t%s: %s\n", k, v)
