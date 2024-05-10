@@ -60,6 +60,15 @@ func (s *Server) Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, err
 		}
 	}
 
+	for _, exres := range res.Extensions {
+		for _, kv := range buildKeyMultivalue(exres.Info) {
+			rsp.Extensions = append(rsp.Extensions, &ExtendedInfo{
+				Name: exres.Name,
+				Info: kv,
+			})
+		}
+	}
+
 	return &rsp, nil
 }
 
