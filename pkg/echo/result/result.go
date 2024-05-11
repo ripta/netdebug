@@ -68,8 +68,16 @@ func (r Result) WriteTo(w io.Writer) (int64, error) {
 
 	for _, ext := range r.Extensions {
 		fmt.Fprintf(buf, "Extension %s:\n", ext.Name)
-		for k, vs := range ext.Info {
-			for _, v := range vs {
+
+		// sort keys
+		keys := []string{}
+		for k := range ext.Info {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		for _, k := range keys {
+			for _, v := range ext.Info[k] {
 				fmt.Fprintf(buf, "\t%s: %s\n", k, v)
 			}
 		}
