@@ -109,6 +109,9 @@ func newEchoCommand() *cobra.Command {
 	cmd.Flags().StringVar(&jwtConf.Audience, "jwt-audience", jwtConf.Audience, "JWT audience")
 	cmd.Flags().StringSliceVar(&jwtConf.SigningAlgorithms, "jwt-signing-algorithms", jwtConf.SigningAlgorithms, "JWT supported signing algorithms")
 
+	cmd.Flags().Float64Var(&s.OtelSampleRate, "otel-sample-rate", s.OtelSampleRate, "OpenTelemetry sample rate, between 0 (never) and 1 (always) inclusive")
+	cmd.Flags().StringVar(&s.OtelGCPProjectID, "otel-gcp-project-id", s.OtelGCPProjectID, "OpenTelemetry Exporter's GCP Project ID")
+
 	echo.ServerModeVar(cmd.Flags(), &s.Mode, "mode", "Server mode: http, grpc, grpc+http")
 
 	return cmd
