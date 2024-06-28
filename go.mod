@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.10.0
 	github.com/miekg/dns v1.1.59
 	github.com/ripta/rt v0.0.0-20240507001434-e49a4ec6386d
-	github.com/spf13/cobra v1.8.0
+	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
 	github.com/thediveo/enumflag/v2 v2.0.5
