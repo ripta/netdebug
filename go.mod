@@ -12,7 +12,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
 	github.com/thediveo/enumflag/v2 v2.0.5
-	go.uber.org/automaxprocs v1.5.3
+	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/net v0.29.0
 	google.golang.org/grpc v1.66.1
 	google.golang.org/protobuf v1.34.2
