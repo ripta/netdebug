@@ -13,7 +13,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/thediveo/enumflag/v2 v2.0.5
 	go.uber.org/automaxprocs v1.6.0
-	golang.org/x/net v0.32.0
+	golang.org/x/net v0.33.0
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.36.0
 	k8s.io/klog/v2 v2.130.1
