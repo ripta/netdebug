@@ -6,7 +6,7 @@ toolchain go1.21.9
 
 require (
 	github.com/coreos/go-oidc/v3 v3.12.0
-	github.com/miekg/dns v1.1.62
+	github.com/miekg/dns v1.1.63
 	github.com/ripta/rt v0.0.0-20240507001434-e49a4ec6386d
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
