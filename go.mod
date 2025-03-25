@@ -1,8 +1,7 @@
 module github.com/ripta/netdebug
 
 go 1.21
-
-toolchain go1.21.9
+toolchain go1.24.1
 
 require (
 	github.com/coreos/go-oidc/v3 v3.12.0
@@ -15,7 +14,7 @@ require (
 	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/net v0.35.0
 	google.golang.org/grpc v1.67.1
-	google.golang.org/protobuf v1.36.5
+	google.golang.org/protobuf v1.36.6
 	k8s.io/klog/v2 v2.130.1
 )
 
