@@ -1,8 +1,7 @@
 module github.com/ripta/netdebug
 
 go 1.21
-
-toolchain go1.21.9
+toolchain go1.24.1
 
 require (
 	github.com/coreos/go-oidc/v3 v3.12.0
@@ -26,7 +25,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	golang.org/x/crypto v0.33.0 // indirect
+	golang.org/x/crypto v0.35.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
 	golang.org/x/mod v0.18.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
