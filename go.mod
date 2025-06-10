@@ -14,7 +14,7 @@ require (
 	github.com/thediveo/enumflag/v2 v2.0.7
 	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/net v0.41.0
-	google.golang.org/grpc v1.72.2
+	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 	k8s.io/klog/v2 v2.130.1
 )
