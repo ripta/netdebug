@@ -9,7 +9,7 @@ require (
 	github.com/miekg/dns v1.1.68
 	github.com/ripta/rt v0.0.0-20250409051646-3283bd3d0519
 	github.com/spf13/cobra v1.10.1
-	github.com/spf13/pflag v1.0.9
+	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/thediveo/enumflag/v2 v2.0.7
 	go.uber.org/automaxprocs v1.6.0
