@@ -1,11 +1,9 @@
 module github.com/ripta/netdebug
 
-go 1.23.4
-
-toolchain go1.23.8
+go 1.24.0
 
 require (
-	github.com/coreos/go-oidc/v3 v3.15.0
+	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/miekg/dns v1.1.68
 	github.com/ripta/rt v0.0.0-20250409051646-3283bd3d0519
 	github.com/spf13/cobra v1.10.1
@@ -21,7 +19,7 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.1 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
