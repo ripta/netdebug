@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/coreos/go-oidc/v3 v3.17.0
-	github.com/miekg/dns v1.1.68
+	github.com/miekg/dns v1.1.69
 	github.com/ripta/rt v0.0.0-20250409051646-3283bd3d0519
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -13,7 +13,7 @@ require (
 	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/net v0.48.0
 	google.golang.org/grpc v1.77.0
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/protobuf v1.36.11
 	k8s.io/klog/v2 v2.130.1
 )
 
