@@ -1,6 +1,6 @@
 module github.com/ripta/netdebug
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/coreos/go-oidc/v3 v3.17.0
@@ -11,8 +11,8 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/thediveo/enumflag/v2 v2.1.0
 	go.uber.org/automaxprocs v1.6.0
-	golang.org/x/net v0.50.0
-	google.golang.org/grpc v1.79.1
+	golang.org/x/net v0.51.0
+	google.golang.org/grpc v1.79.2
 	google.golang.org/protobuf v1.36.11
 	k8s.io/klog/v2 v2.130.1
 )
