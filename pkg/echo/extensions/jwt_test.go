@@ -1,11 +1,21 @@
 package extensions
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func validJWTConfig() JWTConfig {
+	return JWTConfig{
+		HeaderName: "X-JWT",
+		JWKSURL:    "https://example.invalid/jwks.json",
+		Audience:   "test-audience",
+	}
+}
 
 type jwtMisconfiguredTest struct {
 	Name   string
@@ -44,4 +54,21 @@ func TestJWT_ErrMisconfigured(t *testing.T) {
 			assert.Nil(t, fn)
 		})
 	}
+}
+
+func TestJWT_ConstructsWithRequiredFields(t *testing.T) {
+	fn, err := JWT(validJWTConfig())
+	require.NoError(t, err)
+	require.NotNil(t, fn)
+}
+
+func TestJWT_HeaderAbsentReturnsNil(t *testing.T) {
+	fn, err := JWT(validJWTConfig())
+	require.NoError(t, err)
+	require.NotNil(t, fn)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	results, err := fn(req)
+	assert.NoError(t, err)
+	assert.Nil(t, results)
 }
