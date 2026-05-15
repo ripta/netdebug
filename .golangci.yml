@@ -1,0 +1,56 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - dupl
+    - errorlint
+    - funlen
+    - gocyclo
+    - misspell
+    - nilerr
+    - revive
+    - unconvert
+    - unparam
+
+  settings:
+    funlen:
+      lines: 100
+      statements: 50
+    gocyclo:
+      min-complexity: 20
+    revive:
+      rules:
+        - name: package-comments
+          disabled: true
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - dupl
+          - funlen
+          - gocyclo
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/ripta/netdebug
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+# Generated protobuf code is excluded via the standard skip-dirs / skip-files
+# behavior; golangci-lint treats files containing the generated-code header
+# as generated and skips them automatically.
