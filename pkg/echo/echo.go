@@ -106,7 +106,9 @@ func (s *Server) Run(ctx context.Context) error {
 		klog.InfoS("generating self-signed certificates", "tls_dir", tlsDir)
 		defer func() {
 			klog.InfoS("cleaning up self-signed certificates", "tls_dir", tlsDir)
-			os.RemoveAll(tlsDir)
+			if err := os.RemoveAll(tlsDir); err != nil {
+				klog.ErrorS(err, "removing TLS directory", "tls_dir", tlsDir)
+			}
 		}()
 
 		klog.Info("generating CA certificate")
@@ -269,7 +271,9 @@ func (s *Server) echoHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) healthzHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK\n"))
+	if _, err := w.Write([]byte("OK\n")); err != nil {
+		klog.ErrorS(err, "writing healthz response")
+	}
 }
 
 func getEnvOrDefault(envName, defaultValue string) string {

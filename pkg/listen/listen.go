@@ -47,8 +47,15 @@ func (s *Server) Run(_ context.Context) error {
 }
 
 func (s *Server) handle(c net.Conn) {
-	defer c.Close()
-	c.SetDeadline(time.Now().Add(10 * time.Second))
+	defer func() {
+		if err := c.Close(); err != nil {
+			klog.ErrorS(err, "closing client connection", "remote_address", c.RemoteAddr())
+		}
+	}()
+	if err := c.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		klog.ErrorS(err, "setting deadline on client connection", "remote_address", c.RemoteAddr())
+		return
+	}
 	klog.InfoS("accepted client connection", "remote_address", c.RemoteAddr(), "local_address", c.LocalAddr())
 
 	buf := bytes.Buffer{}
