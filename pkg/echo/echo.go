@@ -91,92 +91,29 @@ func (s *Server) Run(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if s.TLSAutogen && s.TLSCertPath != "" && s.TLSKeyPath != "" {
-		return errors.New("--tls-autogenerate cannot be combined with --tls-key-file and --tls-cert-file")
-	} else if (s.TLSCertPath != "") != (s.TLSKeyPath != "") {
-		return errors.New("--tls-key-file and --tls-cert-file must both be empty or both be specified")
+	if err := s.validateTLSFlags(); err != nil {
+		return err
 	}
 
 	if s.TLSAutogen {
-		tlsDir, err := os.MkdirTemp("", "netdebug-echo-tls.*")
+		cleanup, err := s.setupTLSAutogen()
 		if err != nil {
 			return err
 		}
-
-		klog.InfoS("generating self-signed certificates", "tls_dir", tlsDir)
-		defer func() {
-			klog.InfoS("cleaning up self-signed certificates", "tls_dir", tlsDir)
-			if err := os.RemoveAll(tlsDir); err != nil {
-				klog.ErrorS(err, "removing TLS directory", "tls_dir", tlsDir)
-			}
-		}()
-
-		klog.Info("generating CA certificate")
-		caCert, err := generateCACert()
-		if err != nil {
-			return fmt.Errorf("generate CA cert: %w", err)
-		}
-
-		klog.Info("generating server certificate")
-		servCert, err := generateServerCert(caCert)
-		if err != nil {
-			return fmt.Errorf("generating server cert: %w", err)
-		}
-
-		caCertFile := filepath.Join(tlsDir, "ca.crt")
-		if err := os.WriteFile(caCertFile, caCert.CertPEM, 0o644); err != nil {
-			return fmt.Errorf("writing CA cert: %w", err)
-		}
-
-		caKeyFile := filepath.Join(tlsDir, "ca.key")
-		if err := os.WriteFile(caKeyFile, caCert.PrivatePEM, 0o600); err != nil {
-			return fmt.Errorf("writing CA key: %w", err)
-		}
-
-		servCertFile := filepath.Join(tlsDir, "server.crt")
-		if err := os.WriteFile(servCertFile, servCert.CertPEM, 0o644); err != nil {
-			return fmt.Errorf("writing server cert: %w", err)
-		}
-
-		servKeyFile := filepath.Join(tlsDir, "server.key")
-		if err := os.WriteFile(servKeyFile, servCert.PrivatePEM, 0o600); err != nil {
-			return fmt.Errorf("writing server key: %w", err)
-		}
-
-		s.TLSCertPath = servCertFile
-		s.TLSKeyPath = servKeyFile
+		defer cleanup()
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/favicon.ico", http.NotFound)
 	mux.HandleFunc("/healthz", s.healthzHandler)
-	if s.Mode == ServerModeGRPC || s.Mode == ServerModeBoth {
-		klog.InfoS("initializing gRPC handler")
 
-		gs := grpc.NewServer()
-		v1.RegisterEchoerServer(gs, &v1.Server{})
-		reflection.Register(gs)
-
-		gh := health.NewServer()
-		gh.SetServingStatus(v1.Echoer_Echo_FullMethodName, grpc_health_v1.HealthCheckResponse_SERVING)
-		gh.SetServingStatus(v1.Echoer_Status_FullMethodName, grpc_health_v1.HealthCheckResponse_SERVING)
-		grpc_health_v1.RegisterHealthServer(gs, gh)
-
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if s.Mode == ServerModeBoth && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
-				s.echoHandler(w, r)
-				return
-			}
-
-			res := s.getResultFromRequest(r)
-			klog.V(3).InfoS("serving gRPC request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
-
-			ctx := r.Context()
-			gs.ServeHTTP(w, r.WithContext(result.WithResult(ctx, res)))
-		})
-	} else {
-		klog.InfoS("initializing HTTP handler")
-		mux.HandleFunc("/", s.echoHandler)
+	switch s.Mode {
+	case ServerModeHTTP:
+		s.installHTTPHandler(mux)
+	case ServerModeGRPC:
+		s.installGRPCHandler(mux)
+	case ServerModeBoth:
+		s.installBothHandler(mux)
 	}
 
 	addr := fmt.Sprintf("%s:%d", s.ListenHost, s.ListenPort)
@@ -188,6 +125,127 @@ func (s *Server) Run(ctx context.Context) error {
 		},
 	}
 
+	s.serve(ctx, server)
+	return nil
+}
+
+func (s *Server) validateTLSFlags() error {
+	if s.TLSAutogen && s.TLSCertPath != "" && s.TLSKeyPath != "" {
+		return errors.New("--tls-autogenerate cannot be combined with --tls-key-file and --tls-cert-file")
+	}
+	if (s.TLSCertPath != "") != (s.TLSKeyPath != "") {
+		return errors.New("--tls-key-file and --tls-cert-file must both be empty or both be specified")
+	}
+	return nil
+}
+
+func (s *Server) setupTLSAutogen() (func(), error) {
+	tlsDir, err := os.MkdirTemp("", "netdebug-echo-tls.*")
+	if err != nil {
+		return nil, err
+	}
+
+	klog.InfoS("generating self-signed certificates", "tls_dir", tlsDir)
+	cleanup := func() {
+		klog.InfoS("cleaning up self-signed certificates", "tls_dir", tlsDir)
+		if err := os.RemoveAll(tlsDir); err != nil {
+			klog.ErrorS(err, "removing TLS directory", "tls_dir", tlsDir)
+		}
+	}
+
+	klog.Info("generating CA certificate")
+	caCert, err := generateCACert()
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("generate CA cert: %w", err)
+	}
+
+	klog.Info("generating server certificate")
+	servCert, err := generateServerCert(caCert)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("generating server cert: %w", err)
+	}
+
+	caCertFile := filepath.Join(tlsDir, "ca.crt")
+	if err := os.WriteFile(caCertFile, caCert.CertPEM, 0o644); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("writing CA cert: %w", err)
+	}
+
+	caKeyFile := filepath.Join(tlsDir, "ca.key")
+	if err := os.WriteFile(caKeyFile, caCert.PrivatePEM, 0o600); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("writing CA key: %w", err)
+	}
+
+	servCertFile := filepath.Join(tlsDir, "server.crt")
+	if err := os.WriteFile(servCertFile, servCert.CertPEM, 0o644); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("writing server cert: %w", err)
+	}
+
+	servKeyFile := filepath.Join(tlsDir, "server.key")
+	if err := os.WriteFile(servKeyFile, servCert.PrivatePEM, 0o600); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("writing server key: %w", err)
+	}
+
+	s.TLSCertPath = servCertFile
+	s.TLSKeyPath = servKeyFile
+	return cleanup, nil
+}
+
+func (s *Server) newGRPCServer() *grpc.Server {
+	gs := grpc.NewServer()
+	v1.RegisterEchoerServer(gs, &v1.Server{})
+	reflection.Register(gs)
+
+	gh := health.NewServer()
+	gh.SetServingStatus(v1.Echoer_Echo_FullMethodName, grpc_health_v1.HealthCheckResponse_SERVING)
+	gh.SetServingStatus(v1.Echoer_Status_FullMethodName, grpc_health_v1.HealthCheckResponse_SERVING)
+	grpc_health_v1.RegisterHealthServer(gs, gh)
+
+	return gs
+}
+
+func (s *Server) installHTTPHandler(mux *http.ServeMux) {
+	klog.InfoS("initializing HTTP handler")
+	mux.HandleFunc("/", s.echoHandler)
+}
+
+func (s *Server) installGRPCHandler(mux *http.ServeMux) {
+	klog.InfoS("initializing gRPC handler")
+	gs := s.newGRPCServer()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		res := s.getResultFromRequest(r)
+		klog.V(3).InfoS("serving gRPC request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
+
+		ctx := r.Context()
+		gs.ServeHTTP(w, r.WithContext(result.WithResult(ctx, res)))
+	})
+}
+
+func (s *Server) installBothHandler(mux *http.ServeMux) {
+	klog.InfoS("initializing gRPC handler")
+	gs := s.newGRPCServer()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+			s.echoHandler(w, r)
+			return
+		}
+
+		res := s.getResultFromRequest(r)
+		klog.V(3).InfoS("serving gRPC request", "request_uri", r.RequestURI, "remote_addr", r.RemoteAddr)
+
+		ctx := r.Context()
+		gs.ServeHTTP(w, r.WithContext(result.WithResult(ctx, res)))
+	})
+}
+
+func (s *Server) serve(ctx context.Context, server *http.Server) {
 	wg := sync.WaitGroup{}
 
 	wg.Add(1)
@@ -208,14 +266,14 @@ func (s *Server) Run(ctx context.Context) error {
 		defer wg.Done()
 
 		if s.TLSKeyPath != "" && s.TLSCertPath != "" {
-			klog.InfoS("listening for HTTP requests with TLS", "addr", addr)
+			klog.InfoS("listening for HTTP requests with TLS", "addr", server.Addr)
 			if err := server.ListenAndServeTLS(s.TLSCertPath, s.TLSKeyPath); err != nil && err != http.ErrServerClosed {
 				klog.ErrorS(err, "after serving with TLS")
 			}
 			return
 		}
 
-		klog.InfoS("listening for HTTP requests", "addr", addr)
+		klog.InfoS("listening for HTTP requests", "addr", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			klog.ErrorS(err, "after serving")
 		}
@@ -224,7 +282,6 @@ func (s *Server) Run(ctx context.Context) error {
 	wg.Wait()
 
 	klog.Info("shut down complete")
-	return nil
 }
 
 func (s *Server) getResultFromRequest(r *http.Request) result.Result {
