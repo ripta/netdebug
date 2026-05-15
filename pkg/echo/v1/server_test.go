@@ -176,6 +176,59 @@ func TestStatus_TranslatesForceGrpcStatus(t *testing.T) {
 	}
 }
 
+type buildKeyMultivalueTest struct {
+	Name  string
+	Input map[string][]string
+	Want  map[string][]string
+}
+
+var buildKeyMultivalueTests = []buildKeyMultivalueTest{
+	{
+		Name:  "nil map yields empty slice",
+		Input: nil,
+		Want:  map[string][]string{},
+	},
+	{
+		Name:  "empty map yields empty slice",
+		Input: map[string][]string{},
+		Want:  map[string][]string{},
+	},
+	{
+		Name:  "single key single value",
+		Input: map[string][]string{"k": {"v"}},
+		Want:  map[string][]string{"k": {"v"}},
+	},
+	{
+		Name:  "single key preserves value order",
+		Input: map[string][]string{"k": {"a", "b", "c"}},
+		Want:  map[string][]string{"k": {"a", "b", "c"}},
+	},
+	{
+		Name: "multi key mixed",
+		Input: map[string][]string{
+			"k1": {"v1"},
+			"k2": {"a", "b"},
+			"k3": {"x", "y", "z"},
+		},
+		Want: map[string][]string{
+			"k1": {"v1"},
+			"k2": {"a", "b"},
+			"k3": {"x", "y", "z"},
+		},
+	},
+}
+
+func TestBuildKeyMultivalue(t *testing.T) {
+	for _, tc := range buildKeyMultivalueTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			got := buildKeyMultivalue(tc.Input)
+			require.NotNil(t, got)
+			assert.Len(t, got, len(tc.Want))
+			assert.Equal(t, tc.Want, flatten(got))
+		})
+	}
+}
+
 func flatten(kms []*KeyMultivalue) map[string][]string {
 	out := make(map[string][]string, len(kms))
 	for _, kv := range kms {
