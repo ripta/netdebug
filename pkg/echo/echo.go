@@ -16,8 +16,6 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/thediveo/enumflag/v2"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -117,9 +115,14 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	addr := fmt.Sprintf("%s:%d", s.ListenHost, s.ListenPort)
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetHTTP2(true)
+	protocols.SetUnencryptedHTTP2(true)
 	server := &http.Server{
-		Addr:    addr,
-		Handler: h2c.NewHandler(mux, &http2.Server{}),
+		Addr:      addr,
+		Handler:   mux,
+		Protocols: protocols,
 		BaseContext: func(_ net.Listener) context.Context {
 			return ctx
 		},

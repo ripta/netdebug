@@ -1,4 +1,4 @@
-FROM golang:1.24-bookworm AS build
+FROM golang:1.25-trixie AS build
 
 RUN mkdir /app
 WORKDIR /app
@@ -9,7 +9,7 @@ RUN go build ./cmd/netdebug
 
 ###
 
-FROM gcr.io/distroless/base-debian12
+FROM gcr.io/distroless/base-debian13
 COPY --from=build /app/netdebug /app/netdebug
 RUN ["/app/netdebug", "version"]
 ENTRYPOINT ["/app/netdebug"]
