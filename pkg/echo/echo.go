@@ -285,15 +285,6 @@ func (s *Server) serve(ctx context.Context, server *http.Server) {
 }
 
 func (s *Server) getResultFromRequest(r *http.Request) result.Result {
-	exts := []result.ExtensionResult{}
-	for _, fn := range s.Extensions {
-		e, err := fn(r.Clone(context.Background()))
-		if err != nil {
-			klog.ErrorS(err, "extension error")
-		}
-		exts = append(exts, e...)
-	}
-
 	return result.Result{
 		Extensions: s.Extensions.GetResult(r),
 		Kubernetes: result.KubernetesResult{
