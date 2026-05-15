@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+GLOOBIN_NAME="golangci-lint"
+GLOOBIN_VERSION="v2.12.2"
+
+GLOOBIN_OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+GLOOBIN_ARCH="$(uname -m)"
+
+case "${GLOOBIN_OS}" in
+  darwin) GLCI_OS="darwin" ;;
+  linux)  GLCI_OS="linux" ;;
+  *)      echo "Unsupported OS: ${GLOOBIN_OS}" >&2; exit 1 ;;
+esac
+
+case "${GLOOBIN_ARCH}" in
+  x86_64)  GLCI_ARCH="amd64" ;;
+  arm64)   GLCI_ARCH="arm64" ;;
+  aarch64) GLCI_ARCH="arm64" ;;
+  *)       echo "Unsupported architecture: ${GLOOBIN_ARCH}" >&2; exit 1 ;;
+esac
+
+GLCI_VERSION_NUM="${GLOOBIN_VERSION#v}"
+GLCI_ASSET_NAME="${GLOOBIN_NAME}-${GLCI_VERSION_NUM}-${GLCI_OS}-${GLCI_ARCH}"
+GLOOPKG_URL="https://github.com/golangci/golangci-lint/releases/download/${GLOOBIN_VERSION}/${GLCI_ASSET_NAME}.tar.gz"
+GLOOSHA_URL="https://github.com/golangci/golangci-lint/releases/download/${GLOOBIN_VERSION}/${GLOOBIN_NAME}-${GLCI_VERSION_NUM}-checksums.txt"
+
+CACHE_DIR="./.cache"
+CACHE_BIN="${CACHE_DIR}/${GLOOBIN_NAME}-${GLOOBIN_VERSION}"
+
+if [ ! -d "${CACHE_DIR}" ]; then
+  mkdir -p "${CACHE_DIR}"
+fi
+
+if [ ! -f "${CACHE_BIN}" ]; then
+  echo "Downloading ${GLOOBIN_NAME} ${GLOOBIN_VERSION}..." >&2
+
+  GLOOBIN_TMP=$(mktemp -d)
+  trap 'rm -rf "${GLOOBIN_TMP}"' EXIT
+
+  (
+    cd "${GLOOBIN_TMP}"
+    curl -fsSL "${GLOOPKG_URL}" -o "${GLCI_ASSET_NAME}.tar.gz"
+
+    # golangci-lint publishes a single combined checksums file; extract the line
+    # for our asset and feed it to the local verifier.
+    if curl -fsSL "${GLOOSHA_URL}" -o checksums.txt 2>/dev/null; then
+      if [ -s checksums.txt ]; then
+        grep " ${GLCI_ASSET_NAME}.tar.gz\$" checksums.txt > "${GLCI_ASSET_NAME}.tar.gz.sha256"
+        if command -v sha256sum >/dev/null 2>&1; then
+          sha256sum -c "${GLCI_ASSET_NAME}.tar.gz.sha256"
+        elif command -v shasum >/dev/null 2>&1; then
+          shasum -a 256 -c "${GLCI_ASSET_NAME}.tar.gz.sha256"
+        else
+          echo "Warning: No SHA256 verification tool found" >&2
+        fi
+      fi
+    fi
+
+    tar -xzf "${GLCI_ASSET_NAME}.tar.gz"
+  )
+
+  echo "Installing ${GLOOBIN_NAME} into cache..." >&2
+  mv "${GLOOBIN_TMP}/${GLCI_ASSET_NAME}/${GLOOBIN_NAME}" "${CACHE_BIN}"
+  chmod +x "${CACHE_BIN}"
+fi
+
+exec "${CACHE_BIN}" "$@"
