@@ -25,7 +25,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/ripta/netdebug/pkg/echo/result"
-	"github.com/ripta/netdebug/pkg/echo/v1"
+	v1 "github.com/ripta/netdebug/pkg/echo/v1"
 )
 
 type Server struct {

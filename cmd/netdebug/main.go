@@ -2,9 +2,7 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
-	"time"
 
 	_ "go.uber.org/automaxprocs"
 
@@ -12,7 +10,6 @@ import (
 )
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "last resort logger: %v\n", err)
 		os.Exit(1)
