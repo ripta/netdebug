@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/ripta/netdebug/pkg/echo/result"
 )
@@ -102,6 +104,76 @@ func TestEcho_EmptyExtensions(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rsp)
 	assert.Nil(t, rsp.Extensions)
+}
+
+type statusTest struct {
+	Name        string
+	Force       uint32
+	Message     string
+	WantCode    codes.Code
+	WantMessage string
+}
+
+var statusTests = []statusTest{
+	{
+		Name:        "OK with message is nil error",
+		Force:       uint32(codes.OK),
+		Message:     "ignored",
+		WantCode:    codes.OK,
+		WantMessage: "",
+	},
+	{
+		Name:        "Canceled",
+		Force:       uint32(codes.Canceled),
+		Message:     "client gave up",
+		WantCode:    codes.Canceled,
+		WantMessage: "client gave up",
+	},
+	{
+		Name:        "InvalidArgument",
+		Force:       uint32(codes.InvalidArgument),
+		Message:     "bad input",
+		WantCode:    codes.InvalidArgument,
+		WantMessage: "bad input",
+	},
+	{
+		Name:        "NotFound with empty message",
+		Force:       uint32(codes.NotFound),
+		Message:     "",
+		WantCode:    codes.NotFound,
+		WantMessage: "",
+	},
+	{
+		Name:        "Internal with message",
+		Force:       uint32(codes.Internal),
+		Message:     "boom",
+		WantCode:    codes.Internal,
+		WantMessage: "boom",
+	},
+	{
+		Name:        "Unauthenticated",
+		Force:       uint32(codes.Unauthenticated),
+		Message:     "no creds",
+		WantCode:    codes.Unauthenticated,
+		WantMessage: "no creds",
+	},
+}
+
+func TestStatus_TranslatesForceGrpcStatus(t *testing.T) {
+	for _, tc := range statusTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			rsp, err := (&Server{}).Status(context.Background(), &StatusRequest{
+				ForceGrpcStatus: tc.Force,
+				Message:         tc.Message,
+			})
+			require.NotNil(t, rsp)
+
+			s, ok := status.FromError(err)
+			require.True(t, ok)
+			assert.Equal(t, tc.WantCode, s.Code())
+			assert.Equal(t, tc.WantMessage, s.Message())
+		})
+	}
 }
 
 func flatten(kms []*KeyMultivalue) map[string][]string {
