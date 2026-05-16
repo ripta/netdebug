@@ -67,6 +67,7 @@ func newBenchCommand() *cobra.Command {
 	cmd.Flags().IntVar(&b.EmbeddingDim, "embedding-dim", b.EmbeddingDim, "Dimensions for embedding-float and embedding-bytes payload shapes")
 	cmd.Flags().IntVar(&b.BytesSize, "bytes-size", b.BytesSize, "Size in bytes for the bytes payload shape")
 	cmd.Flags().IntVar(&b.StringLen, "string-len", b.StringLen, "Length in characters for the string payload shape")
+	cmd.Flags().StringVar(&b.Compression, "compression", b.Compression, "Compression codec: identity, gzip, snappy, zstd")
 
 	return cmd
 }

@@ -19,13 +19,14 @@ import (
 )
 
 type worker struct {
-	target    string
-	plaintext bool
-	dialOpts  []grpc.DialOption
-	selector  *PayloadSelector
-	sizes     PayloadSizes
-	rng       *rand.Rand
-	results   []Result
+	target      string
+	plaintext   bool
+	dialOpts    []grpc.DialOption
+	compression string
+	selector    *PayloadSelector
+	sizes       PayloadSizes
+	rng         *rand.Rand
+	results     []Result
 }
 
 func (w *worker) run(ctx context.Context) {
@@ -50,7 +51,7 @@ func (w *worker) run(ctx context.Context) {
 	for ctx.Err() == nil {
 		req := BuildEchoRequest(w.selector.Pick(w.rng), w.sizes)
 		start := time.Now()
-		rsp, err := client.Echo(ctx, req)
+		rsp, err := client.Echo(ctx, req, grpc.UseCompressor(w.compression))
 		end := time.Now()
 
 		if err != nil && (ctx.Err() != nil || isCancellation(err)) {

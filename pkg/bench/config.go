@@ -3,6 +3,7 @@ package bench
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand/v2"
 	"os"
@@ -23,6 +24,7 @@ type Config struct {
 	EmbeddingDim int
 	BytesSize    int
 	StringLen    int
+	Compression  string
 	Output       io.Writer
 
 	dialOpts []grpc.DialOption
@@ -40,6 +42,7 @@ func New() *Config {
 		EmbeddingDim: 1024,
 		BytesSize:    1024,
 		StringLen:    1024,
+		Compression:  CompressionIdentity,
 		Output:       os.Stdout,
 	}
 }
@@ -76,6 +79,9 @@ func (c *Config) Validate() error {
 	if c.StringLen < 0 {
 		return errors.New("string-len must be >= 0")
 	}
+	if !isValidCompression(c.Compression) {
+		return fmt.Errorf("compression %q is not one of identity, gzip, snappy, zstd", c.Compression)
+	}
 	return nil
 }
 
@@ -105,12 +111,13 @@ func (c *Config) run(ctx context.Context) (Summary, error) {
 	workers := make([]*worker, c.Concurrency)
 	for i := range workers {
 		workers[i] = &worker{
-			target:    c.Target,
-			plaintext: c.Plaintext,
-			dialOpts:  c.dialOpts,
-			selector:  selector,
-			sizes:     sizes,
-			rng:       rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())),
+			target:      c.Target,
+			plaintext:   c.Plaintext,
+			dialOpts:    c.dialOpts,
+			compression: c.Compression,
+			selector:    selector,
+			sizes:       sizes,
+			rng:         rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())),
 		}
 	}
 

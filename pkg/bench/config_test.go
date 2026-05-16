@@ -23,6 +23,7 @@ func TestNew_Defaults(t *testing.T) {
 	assert.Equal(t, 1024, c.EmbeddingDim)
 	assert.Equal(t, 1024, c.BytesSize)
 	assert.Equal(t, 1024, c.StringLen)
+	assert.Equal(t, CompressionIdentity, c.Compression)
 	assert.NotNil(t, c.Output)
 }
 
@@ -49,6 +50,7 @@ var configValidateTests = []configValidateTest{
 		Config: Config{
 			Target: "127.0.0.1:8080", Plaintext: true, Concurrency: 1, Duration: 10 * time.Second,
 			Payload: defaultMix, EmbeddingDim: 1024, BytesSize: 1024, StringLen: 1024,
+			Compression: CompressionIdentity,
 		},
 		WantErr: false,
 	},
@@ -140,8 +142,33 @@ var configValidateTests = []configValidateTest{
 		Config: Config{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
 			Payload: defaultMix, EmbeddingDim: 0, BytesSize: 0, StringLen: 0,
+			Compression: CompressionIdentity,
 		},
 		WantErr: false,
+	},
+	{
+		Name: "gzip compression is accepted",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionGzip,
+		},
+		WantErr: false,
+	},
+	{
+		Name: "empty compression is rejected",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: "",
+		},
+		WantErr: true,
+	},
+	{
+		Name: "unknown compression is rejected",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: "lz4",
+		},
+		WantErr: true,
 	},
 }
 

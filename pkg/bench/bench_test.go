@@ -51,6 +51,7 @@ func TestRun_BufconnSmoke(t *testing.T) {
 		Concurrency: 2,
 		Duration:    200 * time.Millisecond,
 		Payload:     defaultMix,
+		Compression: CompressionIdentity,
 		Output:      &buf,
 		dialOpts:    bufconnDialOpts(lis),
 	}
@@ -85,6 +86,7 @@ func TestRun_BufconnPopulatesSummary(t *testing.T) {
 		Concurrency: 2,
 		Duration:    200 * time.Millisecond,
 		Payload:     defaultMix,
+		Compression: CompressionIdentity,
 		Output:      io.Discard,
 		dialOpts:    bufconnDialOpts(lis),
 	}
