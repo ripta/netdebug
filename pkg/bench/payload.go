@@ -3,6 +3,8 @@ package bench
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -166,6 +168,49 @@ type PayloadSizes struct {
 	EmbeddingDim int
 	BytesSize    int
 	StringLen    int
+}
+
+// PayloadSelector picks shapes from a payload mix according to weight.
+// Zero-weight entries are dropped at construction time. A selector is safe
+// for concurrent Pick calls as long as each caller supplies its own
+// *rand.Rand; the selector itself is read-only after NewPayloadSelector.
+type PayloadSelector struct {
+	shapes     []echov1.PayloadShape
+	cumWeights []int
+	total      int
+}
+
+// NewPayloadSelector precomputes a weighted picker over the positive-weight
+// entries of mix. Returns nil if no entry has weight > 0; callers that have
+// already run Config.Validate will not see that case.
+func NewPayloadSelector(mix PayloadMix) *PayloadSelector {
+	s := &PayloadSelector{
+		shapes:     make([]echov1.PayloadShape, 0, len(mix)),
+		cumWeights: make([]int, 0, len(mix)),
+	}
+	for _, e := range mix {
+		if e.Weight <= 0 {
+			continue
+		}
+		s.total += e.Weight
+		s.shapes = append(s.shapes, e.Shape)
+		s.cumWeights = append(s.cumWeights, s.total)
+	}
+	if len(s.shapes) == 0 {
+		return nil
+	}
+	return s
+}
+
+// Pick returns a shape sampled from the configured weight distribution. The
+// single-shape mix is a fast path that avoids touching r.
+func (s *PayloadSelector) Pick(r *rand.Rand) echov1.PayloadShape {
+	if len(s.shapes) == 1 {
+		return s.shapes[0]
+	}
+	n := r.IntN(s.total)
+	idx := sort.SearchInts(s.cumWeights, n+1)
+	return s.shapes[idx]
 }
 
 // BuildEchoRequest constructs an EchoRequest for the given shape, sized

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"time"
 
 	"google.golang.org/grpc"
@@ -21,6 +22,9 @@ type worker struct {
 	target    string
 	plaintext bool
 	dialOpts  []grpc.DialOption
+	selector  *PayloadSelector
+	sizes     PayloadSizes
+	rng       *rand.Rand
 	results   []Result
 }
 
@@ -44,8 +48,9 @@ func (w *worker) run(ctx context.Context) {
 	client := echov1.NewEchoerClient(conn)
 
 	for ctx.Err() == nil {
+		req := BuildEchoRequest(w.selector.Pick(w.rng), w.sizes)
 		start := time.Now()
-		rsp, err := client.Echo(ctx, &echov1.EchoRequest{})
+		rsp, err := client.Echo(ctx, req)
 		end := time.Now()
 
 		if err != nil && (ctx.Err() != nil || isCancellation(err)) {

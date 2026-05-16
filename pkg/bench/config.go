@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math/rand/v2"
 	"os"
 	"sync"
 	"time"
@@ -94,12 +95,22 @@ func (c *Config) run(ctx context.Context) (Summary, error) {
 	runCtx, cancel := context.WithTimeout(ctx, c.Duration)
 	defer cancel()
 
+	selector := NewPayloadSelector(c.Payload)
+	sizes := PayloadSizes{
+		EmbeddingDim: c.EmbeddingDim,
+		BytesSize:    c.BytesSize,
+		StringLen:    c.StringLen,
+	}
+
 	workers := make([]*worker, c.Concurrency)
 	for i := range workers {
 		workers[i] = &worker{
 			target:    c.Target,
 			plaintext: c.Plaintext,
 			dialOpts:  c.dialOpts,
+			selector:  selector,
+			sizes:     sizes,
+			rng:       rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())),
 		}
 	}
 

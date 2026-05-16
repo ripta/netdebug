@@ -2,6 +2,7 @@ package bench
 
 import (
 	"errors"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -268,4 +269,129 @@ func TestPayloadMix_String_Empty(t *testing.T) {
 func TestPayloadMix_Type(t *testing.T) {
 	var m PayloadMix
 	assert.Equal(t, "payload-mix", m.Type())
+}
+
+func TestNewPayloadSelector_DropsZeroWeights(t *testing.T) {
+	mix := PayloadMix{
+		{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT, Weight: 0},
+		{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_BYTES, Weight: 50},
+		{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_STRING, Weight: 0},
+		{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_BYTES, Weight: 25},
+	}
+	s := NewPayloadSelector(mix)
+	require.NotNil(t, s)
+	assert.Equal(t, []echov1.PayloadShape{
+		echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_BYTES,
+		echov1.PayloadShape_PAYLOAD_SHAPE_BYTES,
+	}, s.shapes)
+	assert.Equal(t, []int{50, 75}, s.cumWeights)
+	assert.Equal(t, 75, s.total)
+}
+
+func TestNewPayloadSelector_AllZeroReturnsNil(t *testing.T) {
+	mix := PayloadMix{
+		{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT, Weight: 0},
+		{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_BYTES, Weight: 0},
+	}
+	assert.Nil(t, NewPayloadSelector(mix))
+}
+
+type payloadSelectorDistributionTest struct {
+	Name string
+	Mix  PayloadMix
+}
+
+var payloadSelectorDistributionTests = []payloadSelectorDistributionTest{
+	{
+		Name: "30:70 two-shape split",
+		Mix: PayloadMix{
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT, Weight: 30},
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_BYTES, Weight: 70},
+		},
+	},
+	{
+		Name: "1:1:1 default-equal weights",
+		Mix: PayloadMix{
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_STRING, Weight: 1},
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_BYTES, Weight: 1},
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_MIXED, Weight: 1},
+		},
+	},
+	{
+		Name: "skewed 5:1:4",
+		Mix: PayloadMix{
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_STRING, Weight: 5},
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_BYTES, Weight: 1},
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_MIXED, Weight: 4},
+		},
+	},
+}
+
+// TestPayloadSelector_Distribution covers the NDB-004 phase-10 acceptance
+// criterion that over N samples the realized mix lands within tolerance of
+// the configured weights. A fixed PCG seed keeps the test deterministic;
+// the tolerance is loose enough that picker bugs are obvious without
+// chasing a real statistical bound.
+func TestPayloadSelector_Distribution(t *testing.T) {
+	const (
+		samples   = 100_000
+		tolerance = 0.01
+	)
+
+	for _, tc := range payloadSelectorDistributionTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			s := NewPayloadSelector(tc.Mix)
+			require.NotNil(t, s)
+			r := rand.New(rand.NewPCG(1, 2))
+
+			counts := make(map[echov1.PayloadShape]int, len(tc.Mix))
+			for range samples {
+				counts[s.Pick(r)]++
+			}
+
+			total := 0
+			for _, e := range tc.Mix {
+				total += e.Weight
+			}
+			for _, e := range tc.Mix {
+				want := float64(e.Weight) / float64(total)
+				got := float64(counts[e.Shape]) / float64(samples)
+				assert.InDelta(t, want, got, tolerance,
+					"shape %v: got %.4f, want %.4f", e.Shape, got, want)
+			}
+		})
+	}
+}
+
+func TestPayloadSelector_SingleShapeFastPath(t *testing.T) {
+	mix := PayloadMix{
+		{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT, Weight: 7},
+	}
+	s := NewPayloadSelector(mix)
+	require.NotNil(t, s)
+
+	r := rand.New(rand.NewPCG(42, 43))
+	for range 1000 {
+		assert.Equal(t, echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT, s.Pick(r))
+	}
+}
+
+func TestPayloadSelector_ZeroWeightShapeNeverPicked(t *testing.T) {
+	mix := PayloadMix{
+		{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_STRING, Weight: 0},
+		{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_BYTES, Weight: 1},
+		{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_MIXED, Weight: 1},
+	}
+	s := NewPayloadSelector(mix)
+	require.NotNil(t, s)
+
+	r := rand.New(rand.NewPCG(7, 11))
+	seen := map[echov1.PayloadShape]bool{}
+	for range 10_000 {
+		got := s.Pick(r)
+		require.NotEqual(t, echov1.PayloadShape_PAYLOAD_SHAPE_STRING, got)
+		seen[got] = true
+	}
+	assert.True(t, seen[echov1.PayloadShape_PAYLOAD_SHAPE_BYTES])
+	assert.True(t, seen[echov1.PayloadShape_PAYLOAD_SHAPE_MIXED])
 }
