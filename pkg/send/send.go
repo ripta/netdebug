@@ -10,6 +10,7 @@ import (
 type Client struct {
 	Network string
 	Address string
+	Reader  io.Reader
 }
 
 func New() *Client {
@@ -25,7 +26,12 @@ func (c *Client) Run(_ context.Context) error {
 		return err
 	}
 
-	if _, err := io.Copy(conn, os.Stdin); err != nil {
+	r := c.Reader
+	if r == nil {
+		r = os.Stdin
+	}
+
+	if _, err := io.Copy(conn, r); err != nil {
 		return err
 	}
 
