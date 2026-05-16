@@ -3,6 +3,8 @@ package bench
 import (
 	"context"
 	"errors"
+	"io"
+	"os"
 	"sync"
 	"time"
 )
@@ -12,8 +14,7 @@ type Config struct {
 	Plaintext   bool
 	Concurrency int
 	Duration    time.Duration
-
-	results []Result
+	Output      io.Writer
 }
 
 func New() *Config {
@@ -22,6 +23,7 @@ func New() *Config {
 		Plaintext:   true,
 		Concurrency: 1,
 		Duration:    10 * time.Second,
+		Output:      os.Stdout,
 	}
 }
 
@@ -39,8 +41,16 @@ func (c *Config) Validate() error {
 }
 
 func (c *Config) Run(ctx context.Context) error {
-	if err := c.Validate(); err != nil {
+	s, err := c.run(ctx)
+	if err != nil {
 		return err
+	}
+	return writeReport(c.output(), c, s)
+}
+
+func (c *Config) run(ctx context.Context) (Summary, error) {
+	if err := c.Validate(); err != nil {
+		return Summary{}, err
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, c.Duration)
@@ -68,10 +78,34 @@ func (c *Config) Run(ctx context.Context) error {
 	for _, w := range workers {
 		total += len(w.results)
 	}
-	c.results = make([]Result, 0, total)
+	results := make([]Result, 0, total)
 	for _, w := range workers {
-		c.results = append(c.results, w.results...)
+		results = append(results, w.results...)
 	}
 
-	return nil
+	return summarize(results, elapsed(results)), nil
+}
+
+func (c *Config) output() io.Writer {
+	if c.Output == nil {
+		return os.Stdout
+	}
+	return c.Output
+}
+
+func elapsed(results []Result) time.Duration {
+	if len(results) == 0 {
+		return 0
+	}
+	earliest := results[0].Start
+	latest := results[0].End
+	for _, r := range results[1:] {
+		if r.Start.Before(earliest) {
+			earliest = r.Start
+		}
+		if r.End.After(latest) {
+			latest = r.End
+		}
+	}
+	return latest.Sub(earliest)
 }

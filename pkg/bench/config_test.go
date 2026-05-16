@@ -15,6 +15,7 @@ func TestNew_Defaults(t *testing.T) {
 	assert.True(t, c.Plaintext)
 	assert.Equal(t, 1, c.Concurrency)
 	assert.Equal(t, 10*time.Second, c.Duration)
+	assert.NotNil(t, c.Output)
 }
 
 func TestNew_DefaultsValidate(t *testing.T) {
