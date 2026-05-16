@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
 )
 
 type Config struct {
@@ -15,6 +17,8 @@ type Config struct {
 	Concurrency int
 	Duration    time.Duration
 	Output      io.Writer
+
+	dialOpts []grpc.DialOption
 }
 
 func New() *Config {
@@ -61,6 +65,7 @@ func (c *Config) run(ctx context.Context) (Summary, error) {
 		workers[i] = &worker{
 			target:    c.Target,
 			plaintext: c.Plaintext,
+			dialOpts:  c.dialOpts,
 		}
 	}
 
