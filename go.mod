@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/coreos/go-oidc/v3 v3.18.0
+	github.com/go-logr/logr v1.4.3
 	github.com/miekg/dns v1.1.72
 	github.com/ripta/rt v0.0.0-20260512063501-2092de13835b
 	github.com/spf13/cobra v1.10.2
@@ -18,7 +19,6 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect

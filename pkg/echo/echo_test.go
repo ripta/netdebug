@@ -1,10 +1,12 @@
 package echo
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,6 +50,51 @@ func TestExtensionAppearsInResult(t *testing.T) {
 	assert.Equal(t, 1, calls)
 }
 
+// TestExtensionListOrderingPreserved installs multiple extensions in a
+// non-alphabetical order and asserts the response preserves install order.
+// The per-extension call counters also re-assert the SA4010 fix: if the
+// dead loop in getResultFromRequest returned, each counter would be 2.
+func TestExtensionListOrderingPreserved(t *testing.T) {
+	calls := map[string]int{}
+	makeExt := func(name string) result.ExtensionFunc {
+		return func(_ *http.Request) ([]result.ExtensionResult, error) {
+			calls[name]++
+			return []result.ExtensionResult{{
+				Name: name,
+				Info: map[string][]string{"k": {name}},
+			}}, nil
+		}
+	}
+
+	s := New()
+	installOrder := []string{"b", "a", "c"}
+	for _, name := range installOrder {
+		s.InstallExtension(makeExt(name))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "application/json")
+	rec := httptest.NewRecorder()
+
+	s.echoHandler(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var res result.Result
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&res))
+
+	require.Len(t, res.Extensions, len(installOrder))
+	gotOrder := make([]string, 0, len(res.Extensions))
+	for _, ext := range res.Extensions {
+		gotOrder = append(gotOrder, ext.Name)
+	}
+	assert.Equal(t, installOrder, gotOrder)
+
+	for _, name := range installOrder {
+		assert.Equalf(t, 1, calls[name], "extension %q invoked %d times; want 1", name, calls[name])
+	}
+}
+
 func TestErroringExtensionIsSkipped(t *testing.T) {
 	ext := func(_ *http.Request) ([]result.ExtensionResult, error) {
 		return nil, errors.New("boom")
@@ -68,4 +115,79 @@ func TestErroringExtensionIsSkipped(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&res))
 
 	assert.Empty(t, res.Extensions)
+}
+
+func TestHealthzHandler_OK(t *testing.T) {
+	s := New()
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+
+	s.healthzHandler(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "OK\n", rec.Body.String())
+}
+
+func TestEchoHandler_ReflectsRequest_JSON(t *testing.T) {
+	s := New()
+
+	req := httptest.NewRequest(http.MethodPost, "/some/path?foo=bar", nil)
+	req.Header.Set("X-Test", "value")
+	req.Header.Set("Accept", "application/json")
+	rec := httptest.NewRecorder()
+
+	s.echoHandler(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var res result.Result
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&res))
+
+	assert.Equal(t, http.MethodPost, res.Request.Method)
+	assert.Equal(t, "/some/path?foo=bar", res.Request.URI)
+	assert.Equal(t, "/some/path", res.Request.ParsedURL.Path)
+	assert.Equal(t, "foo=bar", res.Request.ParsedURL.RawQuery)
+	assert.Equal(t, []string{"value"}, res.Request.Headers["X-Test"])
+	assert.NotEmpty(t, res.Request.RemoteAddr)
+}
+
+func TestEchoHandler_ReflectsRequest_Text(t *testing.T) {
+	s := New()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	s.echoHandler(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	assert.Contains(t, body, "Request information:")
+	assert.Contains(t, body, "Method: GET")
+	assert.Contains(t, body, "Raw URI: /")
+}
+
+func TestSetupTLSAutogen_LoadsViaTLSConfig(t *testing.T) {
+	s := New()
+
+	cleanup, err := s.setupTLSAutogen()
+	require.NoError(t, err)
+	require.NotNil(t, cleanup)
+	defer cleanup()
+
+	require.NotEmpty(t, s.TLSCertPath)
+	require.NotEmpty(t, s.TLSKeyPath)
+
+	_, err = os.Stat(s.TLSCertPath)
+	require.NoError(t, err)
+	_, err = os.Stat(s.TLSKeyPath)
+	require.NoError(t, err)
+
+	cert, err := tls.LoadX509KeyPair(s.TLSCertPath, s.TLSKeyPath)
+	require.NoError(t, err)
+	assert.NotEmpty(t, cert.Certificate)
+
+	cfg := &tls.Config{Certificates: []tls.Certificate{cert}}
+	assert.Len(t, cfg.Certificates, 1)
 }
