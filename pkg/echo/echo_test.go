@@ -50,6 +50,51 @@ func TestExtensionAppearsInResult(t *testing.T) {
 	assert.Equal(t, 1, calls)
 }
 
+// TestExtensionListOrderingPreserved installs multiple extensions in a
+// non-alphabetical order and asserts the response preserves install order.
+// The per-extension call counters also re-assert the SA4010 fix: if the
+// dead loop in getResultFromRequest returned, each counter would be 2.
+func TestExtensionListOrderingPreserved(t *testing.T) {
+	calls := map[string]int{}
+	makeExt := func(name string) result.ExtensionFunc {
+		return func(_ *http.Request) ([]result.ExtensionResult, error) {
+			calls[name]++
+			return []result.ExtensionResult{{
+				Name: name,
+				Info: map[string][]string{"k": {name}},
+			}}, nil
+		}
+	}
+
+	s := New()
+	installOrder := []string{"b", "a", "c"}
+	for _, name := range installOrder {
+		s.InstallExtension(makeExt(name))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "application/json")
+	rec := httptest.NewRecorder()
+
+	s.echoHandler(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var res result.Result
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&res))
+
+	require.Len(t, res.Extensions, len(installOrder))
+	gotOrder := make([]string, 0, len(res.Extensions))
+	for _, ext := range res.Extensions {
+		gotOrder = append(gotOrder, ext.Name)
+	}
+	assert.Equal(t, installOrder, gotOrder)
+
+	for _, name := range installOrder {
+		assert.Equalf(t, 1, calls[name], "extension %q invoked %d times; want 1", name, calls[name])
+	}
+}
+
 func TestErroringExtensionIsSkipped(t *testing.T) {
 	ext := func(_ *http.Request) ([]result.ExtensionResult, error) {
 		return nil, errors.New("boom")
