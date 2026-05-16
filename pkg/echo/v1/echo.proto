@@ -8,8 +8,25 @@ service Echoer {
   rpc Status (StatusRequest) returns (StatusResponse) {}
 }
 
+enum PayloadShape {
+  PAYLOAD_SHAPE_UNSPECIFIED = 0;
+  PAYLOAD_SHAPE_STRING = 1;
+  PAYLOAD_SHAPE_BYTES = 2;
+  PAYLOAD_SHAPE_EMBEDDING_FLOAT = 3;
+  PAYLOAD_SHAPE_EMBEDDING_BYTES = 4;
+  PAYLOAD_SHAPE_MIXED = 5;
+}
+
 message EchoRequest {
   string query = 1;
+  PayloadShape shape = 2;
+  oneof payload {
+    string string_payload = 10;
+    bytes bytes_payload = 11;
+    EmbeddingFloat embedding_float = 12;
+    bytes embedding_bytes = 13;
+    MixedPayload mixed = 14;
+  }
 }
 
 message EchoResponse {
@@ -19,6 +36,18 @@ message EchoResponse {
   RequestInfo request = 3;
   RuntimeInfo runtime = 4;
   repeated ExtendedInfo extensions = 5;
+
+  int64 server_duration_ns = 6;
+  int64 received_at_unix_nano = 7;
+  int64 sent_at_unix_nano = 8;
+  PayloadShape shape = 9;
+  oneof payload {
+    string string_payload = 10;
+    bytes bytes_payload = 11;
+    EmbeddingFloat embedding_float = 12;
+    bytes embedding_bytes = 13;
+    MixedPayload mixed = 14;
+  }
 }
 
 message ExtendedInfo {
@@ -65,6 +94,23 @@ message RuntimeInfo {
   string main_module = 6;
   string main_path = 7;
   string main_version = 8;
+}
+
+message EmbeddingFloat {
+  repeated float values = 1;
+}
+
+message MixedPayload {
+  int64 id = 1;
+  string name = 2;
+  int32 count = 3;
+  double ratio = 4;
+  bool enabled = 5;
+  repeated string tags = 6;
+  repeated int32 numbers = 7;
+  map<string, string> attrs = 8;
+  bytes blob = 9;
+  KeyMultivalue extra = 10;
 }
 
 // StatusRequest determines the error (if any) to return to the caller, representing

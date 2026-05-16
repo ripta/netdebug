@@ -13,7 +13,7 @@ lint: ## Run golangci-lint over the module
 	./bin/golangci-lint run ./...
 
 grpc: ## Regenerate gRPC code from .proto files
-	protoc \
+	PATH="$(CURDIR)/bin:$$PATH" protoc \
 		--go_out=. \
 		--go_opt=paths=source_relative \
 		--go-grpc_out=. \

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+BIN_NAME="protoc-gen-go-grpc"
+BIN_VERSION="v1.3.0"
+BIN_PACKAGE="google.golang.org/grpc/cmd/protoc-gen-go-grpc"
+
+CACHE_DIR="./.cache"
+CACHE_BIN="${CACHE_DIR}/${BIN_NAME}-${BIN_VERSION}"
+
+if [ ! -f "${CACHE_BIN}" ]; then
+  echo "Installing ${BIN_NAME} ${BIN_VERSION}..." >&2
+
+  TMP_GOBIN=$(mktemp -d)
+  trap 'rm -rf "${TMP_GOBIN}"' EXIT
+
+  GOBIN="${TMP_GOBIN}" go install "${BIN_PACKAGE}@${BIN_VERSION}"
+
+  mkdir -p "${CACHE_DIR}"
+  mv "${TMP_GOBIN}/${BIN_NAME}" "${CACHE_BIN}"
+  chmod +x "${CACHE_BIN}"
+fi
+
+exec "${CACHE_BIN}" "$@"
