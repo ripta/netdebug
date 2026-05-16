@@ -2,9 +2,12 @@ package send
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"os"
+
+	"k8s.io/klog/v2"
 )
 
 type Client struct {
@@ -23,8 +26,13 @@ func New() *Client {
 func (c *Client) Run(_ context.Context) error {
 	conn, err := net.Dial(c.Network, c.Address)
 	if err != nil {
-		return err
+		return fmt.Errorf("dialing %s/%s: %w", c.Network, c.Address, err)
 	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			klog.ErrorS(err, "closing connection", "remote_address", conn.RemoteAddr())
+		}
+	}()
 
 	r := c.Reader
 	if r == nil {
@@ -32,7 +40,7 @@ func (c *Client) Run(_ context.Context) error {
 	}
 
 	if _, err := io.Copy(conn, r); err != nil {
-		return err
+		return fmt.Errorf("sending payload to %s/%s: %w", c.Network, c.Address, err)
 	}
 
 	return nil

@@ -3,9 +3,11 @@ package listen
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -15,6 +17,9 @@ type Server struct {
 	Host    string
 	Port    int
 	Network string
+
+	listenerMu sync.RWMutex
+	listener   net.Listener
 }
 
 func New() *Server {
@@ -25,7 +30,18 @@ func New() *Server {
 	}
 }
 
-func (s *Server) Run(_ context.Context) error {
+// Addr returns the bound listener address, or nil if Run has not bound a
+// listener yet. Safe to call concurrently with Run.
+func (s *Server) Addr() net.Addr {
+	s.listenerMu.RLock()
+	defer s.listenerMu.RUnlock()
+	if s.listener == nil {
+		return nil
+	}
+	return s.listener.Addr()
+}
+
+func (s *Server) Run(ctx context.Context) error {
 	// TODO(ripta): handle non-TCP case
 	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
 
@@ -34,10 +50,35 @@ func (s *Server) Run(_ context.Context) error {
 		return err
 	}
 
+	s.listenerMu.Lock()
+	s.listener = l
+	s.listenerMu.Unlock()
+
+	defer func() {
+		s.listenerMu.Lock()
+		s.listener = nil
+		s.listenerMu.Unlock()
+	}()
+
+	stopped := make(chan struct{})
+	defer close(stopped)
+	go func() {
+		select {
+		case <-ctx.Done():
+			if err := l.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				klog.ErrorS(err, "closing listener")
+			}
+		case <-stopped:
+		}
+	}()
+
 	klog.InfoS("listening", "address", l.Addr(), "network", s.Network)
 	for {
 		c, err := l.Accept()
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return nil
+			}
 			klog.ErrorS(err, "accepting client connection")
 			continue
 		}
