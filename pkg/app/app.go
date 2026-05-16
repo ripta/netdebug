@@ -55,7 +55,7 @@ func newBenchCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "bench",
 		Short:   "Benchmark a gRPC echo server",
-		Example: "netdebug bench --target=127.0.0.1:8080 --concurrency=4 --duration=10s",
+		Example: "netdebug bench --target=127.0.0.1:8080 --payload=embedding-float --embedding-dim=1024 --concurrency=4 --duration=10s",
 		RunE:    runAdapter(b.Run),
 	}
 
@@ -63,6 +63,10 @@ func newBenchCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&b.Plaintext, "plaintext", b.Plaintext, "Use plaintext gRPC instead of TLS")
 	cmd.Flags().IntVarP(&b.Concurrency, "concurrency", "c", b.Concurrency, "Number of concurrent workers")
 	cmd.Flags().DurationVarP(&b.Duration, "duration", "d", b.Duration, "Duration of the benchmark run")
+	cmd.Flags().VarP(&b.Payload, "payload", "p", `Payload mix, e.g. "embedding-float" or "embedding-float:50,embedding-bytes:50"`)
+	cmd.Flags().IntVar(&b.EmbeddingDim, "embedding-dim", b.EmbeddingDim, "Dimensions for embedding-float and embedding-bytes payload shapes")
+	cmd.Flags().IntVar(&b.BytesSize, "bytes-size", b.BytesSize, "Size in bytes for the bytes payload shape")
+	cmd.Flags().IntVar(&b.StringLen, "string-len", b.StringLen, "Length in characters for the string payload shape")
 
 	return cmd
 }

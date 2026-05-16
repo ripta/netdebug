@@ -30,6 +30,16 @@ var payloadShapeNames = map[string]echov1.PayloadShape{
 	"mixed":           echov1.PayloadShape_PAYLOAD_SHAPE_MIXED,
 }
 
+// payloadShapeFlagNames is the inverse of payloadShapeNames, used to print
+// a PayloadMix back as a flag-shaped string.
+var payloadShapeFlagNames = func() map[echov1.PayloadShape]string {
+	out := make(map[echov1.PayloadShape]string, len(payloadShapeNames))
+	for k, v := range payloadShapeNames {
+		out[v] = k
+	}
+	return out
+}()
+
 // PayloadEntry is a single shape in a weighted payload mix.
 type PayloadEntry struct {
 	Shape  echov1.PayloadShape
@@ -111,4 +121,90 @@ func ParsePayloadMix(s string) (PayloadMix, error) {
 	}
 
 	return mix, nil
+}
+
+// String renders the mix in a form ParsePayloadMix can re-parse. A
+// single-entry mix with weight 1 is rendered as a bare shape name; any
+// other mix is rendered as "shape:weight,shape:weight". An empty mix
+// renders as the empty string.
+func (m *PayloadMix) String() string {
+	if m == nil || len(*m) == 0 {
+		return ""
+	}
+	if len(*m) == 1 && (*m)[0].Weight == 1 {
+		return payloadShapeFlagNames[(*m)[0].Shape]
+	}
+	parts := make([]string, 0, len(*m))
+	for _, e := range *m {
+		parts = append(parts, fmt.Sprintf("%s:%d", payloadShapeFlagNames[e.Shape], e.Weight))
+	}
+	return strings.Join(parts, ",")
+}
+
+// Set parses s through ParsePayloadMix and replaces the receiver on
+// success. On error the receiver is left unmodified so cobra/pflag's
+// flag-parsing diagnostics report a clean before/after.
+func (m *PayloadMix) Set(s string) error {
+	parsed, err := ParsePayloadMix(s)
+	if err != nil {
+		return err
+	}
+	*m = parsed
+	return nil
+}
+
+// Type satisfies pflag.Value and shows up as the placeholder in --help.
+func (m *PayloadMix) Type() string {
+	return "payload-mix"
+}
+
+// PayloadSizes controls how large each payload shape is when built. Units
+// differ by shape: EmbeddingDim is the number of float32 dimensions for
+// both embedding-float and embedding-bytes, BytesSize is bytes for the
+// bytes shape, and StringLen is character count for the string shape.
+type PayloadSizes struct {
+	EmbeddingDim int
+	BytesSize    int
+	StringLen    int
+}
+
+// BuildEchoRequest constructs an EchoRequest for the given shape, sized
+// per the passed-in sizes. Slice and string contents are zero-valued; the
+// shape and length are what matter for benchmarking proto-decode and
+// wire-size effects. embedding-bytes is sized at 4 * EmbeddingDim so its
+// wire size matches embedding-float at the same --embedding-dim. The
+// mixed shape places StringLen into Name and BytesSize into Blob; other
+// MixedPayload fields are left zero. An unknown or unspecified shape
+// returns a request with Shape set and no Payload, so the caller can
+// decide whether to treat it as an error.
+func BuildEchoRequest(shape echov1.PayloadShape, sizes PayloadSizes) *echov1.EchoRequest {
+	req := &echov1.EchoRequest{Shape: shape}
+	switch shape {
+	case echov1.PayloadShape_PAYLOAD_SHAPE_STRING:
+		req.Payload = &echov1.EchoRequest_StringPayload{
+			StringPayload: strings.Repeat("x", sizes.StringLen),
+		}
+	case echov1.PayloadShape_PAYLOAD_SHAPE_BYTES:
+		req.Payload = &echov1.EchoRequest_BytesPayload{
+			BytesPayload: make([]byte, sizes.BytesSize),
+		}
+	case echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT:
+		req.Payload = &echov1.EchoRequest_EmbeddingFloat{
+			EmbeddingFloat: &echov1.EmbeddingFloat{
+				Values: make([]float32, sizes.EmbeddingDim),
+			},
+		}
+	case echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_BYTES:
+		req.Payload = &echov1.EchoRequest_EmbeddingBytes{
+			EmbeddingBytes: make([]byte, sizes.EmbeddingDim*4),
+		}
+	case echov1.PayloadShape_PAYLOAD_SHAPE_MIXED:
+		req.Payload = &echov1.EchoRequest_Mixed{
+			Mixed: &echov1.MixedPayload{
+				Name: strings.Repeat("x", sizes.StringLen),
+				Blob: make([]byte, sizes.BytesSize),
+			},
+		}
+	}
+	return req
 }

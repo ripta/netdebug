@@ -9,14 +9,20 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+
+	echov1 "github.com/ripta/netdebug/pkg/echo/v1"
 )
 
 type Config struct {
-	Target      string
-	Plaintext   bool
-	Concurrency int
-	Duration    time.Duration
-	Output      io.Writer
+	Target       string
+	Plaintext    bool
+	Concurrency  int
+	Duration     time.Duration
+	Payload      PayloadMix
+	EmbeddingDim int
+	BytesSize    int
+	StringLen    int
+	Output       io.Writer
 
 	dialOpts []grpc.DialOption
 }
@@ -27,7 +33,13 @@ func New() *Config {
 		Plaintext:   true,
 		Concurrency: 1,
 		Duration:    10 * time.Second,
-		Output:      os.Stdout,
+		Payload: PayloadMix{
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT, Weight: 1},
+		},
+		EmbeddingDim: 1024,
+		BytesSize:    1024,
+		StringLen:    1024,
+		Output:       os.Stdout,
 	}
 }
 
@@ -40,6 +52,28 @@ func (c *Config) Validate() error {
 	}
 	if c.Duration <= 0 {
 		return errors.New("duration must be greater than zero")
+	}
+	if len(c.Payload) == 0 {
+		return errors.New("payload mix must not be empty")
+	}
+	hasPositive := false
+	for _, e := range c.Payload {
+		if e.Weight > 0 {
+			hasPositive = true
+			break
+		}
+	}
+	if !hasPositive {
+		return errors.New("payload mix must contain at least one entry with weight > 0")
+	}
+	if c.EmbeddingDim < 0 {
+		return errors.New("embedding-dim must be >= 0")
+	}
+	if c.BytesSize < 0 {
+		return errors.New("bytes-size must be >= 0")
+	}
+	if c.StringLen < 0 {
+		return errors.New("string-len must be >= 0")
 	}
 	return nil
 }
