@@ -50,8 +50,10 @@ func (w *worker) run(ctx context.Context) {
 
 	for ctx.Err() == nil {
 		req := BuildEchoRequest(w.selector.Pick(w.rng), w.sizes)
+		bag := &wireBytes{}
+		callCtx := contextWithWireBytes(ctx, bag)
 		start := time.Now()
-		rsp, err := client.Echo(ctx, req, grpc.UseCompressor(w.compression))
+		rsp, err := client.Echo(callCtx, req, grpc.UseCompressor(w.compression))
 		end := time.Now()
 
 		if err != nil && (ctx.Err() != nil || isCancellation(err)) {
@@ -59,10 +61,14 @@ func (w *worker) run(ctx context.Context) {
 		}
 
 		r := Result{
-			Start:         start,
-			End:           end,
-			TotalDuration: end.Sub(start),
-			Err:           err,
+			Start:                     start,
+			End:                       end,
+			TotalDuration:             end.Sub(start),
+			BytesSentUncompressed:     bag.SentUncompressed.Load(),
+			BytesSentWire:             bag.SentWire.Load(),
+			BytesReceivedUncompressed: bag.ReceivedUncompressed.Load(),
+			BytesReceivedWire:         bag.ReceivedWire.Load(),
+			Err:                       err,
 		}
 		if err == nil && rsp != nil {
 			r.ServerDurationNs = rsp.ServerDurationNs
@@ -91,6 +97,9 @@ func dial(target string, plaintext bool, extra []grpc.DialOption) (*grpc.ClientC
 	} else {
 		creds = credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})
 	}
-	opts := append([]grpc.DialOption{grpc.WithTransportCredentials(creds)}, extra...)
+	opts := append([]grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+		grpc.WithStatsHandler(wireLengthStatsHandler{}),
+	}, extra...)
 	return grpc.NewClient(target, opts...)
 }
