@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 
+	"github.com/ripta/netdebug/pkg/bench"
 	"github.com/ripta/netdebug/pkg/dns"
 	"github.com/ripta/netdebug/pkg/echo"
 	"github.com/ripta/netdebug/pkg/echo/extensions"
@@ -39,11 +40,29 @@ func NewRootCommand() *cobra.Command {
 
 	_ = cmd.MarkFlagFilename("config", "yaml", "json")
 
+	cmd.AddCommand(newBenchCommand())
 	cmd.AddCommand(newDNSCommand())
 	cmd.AddCommand(newEchoCommand())
 	cmd.AddCommand(newListenCommand())
 	cmd.AddCommand(newSendCommand())
 	cmd.AddCommand(version.NewCommand())
+
+	return cmd
+}
+
+func newBenchCommand() *cobra.Command {
+	b := bench.New()
+	cmd := &cobra.Command{
+		Use:     "bench",
+		Short:   "Benchmark a gRPC echo server",
+		Example: "netdebug bench --target=127.0.0.1:8080 --concurrency=4 --duration=10s",
+		RunE:    runAdapter(b.Run),
+	}
+
+	cmd.Flags().StringVarP(&b.Target, "target", "t", b.Target, "Target address (host:port) of the echo server")
+	cmd.Flags().BoolVar(&b.Plaintext, "plaintext", b.Plaintext, "Use plaintext gRPC instead of TLS")
+	cmd.Flags().IntVarP(&b.Concurrency, "concurrency", "c", b.Concurrency, "Number of concurrent workers")
+	cmd.Flags().DurationVarP(&b.Duration, "duration", "d", b.Duration, "Duration of the benchmark run")
 
 	return cmd
 }
