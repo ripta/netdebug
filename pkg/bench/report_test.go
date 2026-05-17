@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 )
 
 func TestWriteReport_PopulatedSummary(t *testing.T) {
@@ -42,6 +43,15 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 			{Key: "pod-b", Source: "pod_name", Count: 40, PercentOfTotal: 40, P50: 4 * time.Millisecond, P99: 12 * time.Millisecond, ErrorCount: 1},
 		},
 		BackendSkew: BackendSkew{CountRatio: 1.5, P99Ratio: 12.0 / 9.0},
+		Errors: []StatusCodeStats{
+			{
+				Code: codes.InvalidArgument, CodeName: "InvalidArgument", Count: 2,
+				TopMessages: []ErrorMessageStat{
+					{Message: "missing query", Count: 1},
+					{Message: "bad shape", Count: 1},
+				},
+			},
+		},
 	}
 
 	var buf bytes.Buffer
@@ -72,6 +82,8 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 		"pod_name=pod-a (60 req, 60.0%): p50=3ms p99=9ms errors=1",
 		"pod_name=pod-b (40 req, 40.0%): p50=4ms p99=12ms errors=1",
 		"Backend skew: count=1.50 p99=1.33",
+		"Errors by code:",
+		"InvalidArgument (2 req): \"missing query\" (1), \"bad shape\" (1)",
 	} {
 		assert.Contains(t, out, want)
 	}
@@ -91,6 +103,7 @@ func TestWriteReport_NoSuccessesRendersNA(t *testing.T) {
 	assert.Contains(t, out, "Backends: n/a")
 	assert.Contains(t, out, "Backend skew: count=n/a p99=n/a")
 	assert.Contains(t, out, "Errors:      3")
+	assert.Contains(t, out, "Errors by code: n/a")
 }
 
 type failingWriter struct{}

@@ -3,11 +3,14 @@ package bench
 import (
 	"errors"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func ms(n int) time.Duration { return time.Duration(n) * time.Millisecond }
@@ -509,6 +512,189 @@ func TestComputeBackendSkew(t *testing.T) {
 			assert.InDelta(t, tc.WantP99Rate, got.P99Ratio, 1e-9, "P99Ratio")
 		})
 	}
+}
+
+type statusCodesBucket struct {
+	Code     codes.Code
+	CodeName string
+	Count    int
+	Messages []ErrorMessageStat
+}
+
+type computeStatusCodesTest struct {
+	Name    string
+	Results []Result
+	Want    []statusCodesBucket
+}
+
+var computeStatusCodesTests = []computeStatusCodesTest{
+	{
+		Name:    "empty input produces no buckets",
+		Results: nil,
+		Want:    nil,
+	},
+	{
+		Name: "successes-only run produces no buckets",
+		Results: []Result{
+			{TotalDuration: ms(1)},
+			{TotalDuration: ms(2)},
+		},
+		Want: nil,
+	},
+	{
+		Name: "single code aggregates and dedups messages",
+		Results: []Result{
+			{Err: status.Error(codes.InvalidArgument, "missing query")},
+			{Err: status.Error(codes.InvalidArgument, "missing query")},
+			{Err: status.Error(codes.InvalidArgument, "bad shape")},
+		},
+		Want: []statusCodesBucket{
+			{
+				Code: codes.InvalidArgument, CodeName: "InvalidArgument", Count: 3,
+				Messages: []ErrorMessageStat{
+					{Message: "missing query", Count: 2},
+					{Message: "bad shape", Count: 1},
+				},
+			},
+		},
+	},
+	{
+		Name: "multiple codes sort by count descending",
+		Results: []Result{
+			{Err: status.Error(codes.Unavailable, "conn reset")},
+			{Err: status.Error(codes.Unavailable, "conn reset")},
+			{Err: status.Error(codes.Unavailable, "conn reset")},
+			{Err: status.Error(codes.InvalidArgument, "bad shape")},
+		},
+		Want: []statusCodesBucket{
+			{
+				Code: codes.Unavailable, CodeName: "Unavailable", Count: 3,
+				Messages: []ErrorMessageStat{{Message: "conn reset", Count: 3}},
+			},
+			{
+				Code: codes.InvalidArgument, CodeName: "InvalidArgument", Count: 1,
+				Messages: []ErrorMessageStat{{Message: "bad shape", Count: 1}},
+			},
+		},
+	},
+	{
+		// Both buckets carry one error, so the secondary key (Code asc)
+		// puts InvalidArgument (3) before Unavailable (14).
+		Name: "tied counts sort by code ascending",
+		Results: []Result{
+			{Err: status.Error(codes.Unavailable, "u")},
+			{Err: status.Error(codes.InvalidArgument, "ia")},
+		},
+		Want: []statusCodesBucket{
+			{
+				Code: codes.InvalidArgument, CodeName: "InvalidArgument", Count: 1,
+				Messages: []ErrorMessageStat{{Message: "ia", Count: 1}},
+			},
+			{
+				Code: codes.Unavailable, CodeName: "Unavailable", Count: 1,
+				Messages: []ErrorMessageStat{{Message: "u", Count: 1}},
+			},
+		},
+	},
+	{
+		// status.Code on a plain error returns Unknown; the wrapped
+		// message is preserved so the failure is still legible.
+		Name: "non-status errors fall into Unknown",
+		Results: []Result{
+			{Err: errors.New("acquiring conn: bufconn closed")},
+			{Err: errors.New("acquiring conn: bufconn closed")},
+		},
+		Want: []statusCodesBucket{
+			{
+				Code: codes.Unknown, CodeName: "Unknown", Count: 2,
+				Messages: []ErrorMessageStat{
+					{Message: "acquiring conn: bufconn closed", Count: 2},
+				},
+			},
+		},
+	},
+	{
+		// Four distinct messages, only three survive. The dropped one
+		// is the lowest-count entry; its count still contributes to the
+		// bucket's Count total.
+		Name: "top-N keeps three highest-count messages within a code",
+		Results: []Result{
+			{Err: status.Error(codes.InvalidArgument, "a")},
+			{Err: status.Error(codes.InvalidArgument, "a")},
+			{Err: status.Error(codes.InvalidArgument, "a")},
+			{Err: status.Error(codes.InvalidArgument, "b")},
+			{Err: status.Error(codes.InvalidArgument, "b")},
+			{Err: status.Error(codes.InvalidArgument, "c")},
+			{Err: status.Error(codes.InvalidArgument, "d")},
+		},
+		Want: []statusCodesBucket{
+			{
+				Code: codes.InvalidArgument, CodeName: "InvalidArgument", Count: 7,
+				Messages: []ErrorMessageStat{
+					{Message: "a", Count: 3},
+					{Message: "b", Count: 2},
+					{Message: "c", Count: 1},
+				},
+			},
+		},
+	},
+	{
+		// Tied counts within a bucket break by Message ascending so the
+		// surviving three are deterministic across runs.
+		Name: "tied message counts break by message ascending",
+		Results: []Result{
+			{Err: status.Error(codes.InvalidArgument, "delta")},
+			{Err: status.Error(codes.InvalidArgument, "charlie")},
+			{Err: status.Error(codes.InvalidArgument, "bravo")},
+			{Err: status.Error(codes.InvalidArgument, "alpha")},
+		},
+		Want: []statusCodesBucket{
+			{
+				Code: codes.InvalidArgument, CodeName: "InvalidArgument", Count: 4,
+				Messages: []ErrorMessageStat{
+					{Message: "alpha", Count: 1},
+					{Message: "bravo", Count: 1},
+					{Message: "charlie", Count: 1},
+				},
+			},
+		},
+	},
+}
+
+func TestComputeStatusCodes(t *testing.T) {
+	for _, tc := range computeStatusCodesTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			got := computeStatusCodes(tc.Results)
+			require.Len(t, got, len(tc.Want))
+			for i, want := range tc.Want {
+				assert.Equal(t, want.Code, got[i].Code, "Errors[%d].Code", i)
+				assert.Equal(t, want.CodeName, got[i].CodeName, "Errors[%d].CodeName", i)
+				assert.Equal(t, want.Count, got[i].Count, "Errors[%d].Count", i)
+				assert.Equal(t, want.Messages, got[i].TopMessages, "Errors[%d].TopMessages", i)
+			}
+		})
+	}
+}
+
+func TestComputeStatusCodes_TruncatesLongMessages(t *testing.T) {
+	long := strings.Repeat("x", maxErrorMessageLen+10)
+	got := computeStatusCodes([]Result{
+		{Err: status.Error(codes.InvalidArgument, long)},
+	})
+	require.Len(t, got, 1)
+	require.Len(t, got[0].TopMessages, 1)
+	want := strings.Repeat("x", maxErrorMessageLen) + "..."
+	assert.Equal(t, want, got[0].TopMessages[0].Message)
+}
+
+func TestTruncateMessage_RuneBoundary(t *testing.T) {
+	// A two-byte rune ("é") repeated keeps the cut on a rune boundary;
+	// the result must remain valid UTF-8 even when the source contains
+	// multi-byte runes.
+	long := strings.Repeat("é", maxErrorMessageLen+5)
+	got := truncateMessage(long)
+	assert.Equal(t, maxErrorMessageLen+len("..."), len([]rune(got)))
+	assert.True(t, strings.HasSuffix(got, "..."), "truncated string ends with ellipsis")
 }
 
 func ascendingResults(n int) []Result {

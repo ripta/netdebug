@@ -1,6 +1,10 @@
 package bench
 
-import "time"
+import (
+	"time"
+
+	"google.golang.org/grpc/codes"
+)
 
 type LatencyStats struct {
 	Count  int
@@ -26,6 +30,27 @@ type Summary struct {
 
 	Backends    []BackendStats
 	BackendSkew BackendSkew
+
+	Errors []StatusCodeStats
+}
+
+// StatusCodeStats groups errored requests by gRPC status code. CodeName is
+// the human-friendly rendering of Code, suitable for both the human report
+// and a future JSON summary. TopMessages is at most topErrorMessages long,
+// sorted by Count descending, with each Message truncated to
+// maxErrorMessageLen runes with a trailing "..." when cut.
+type StatusCodeStats struct {
+	Code        codes.Code
+	CodeName    string
+	Count       int
+	TopMessages []ErrorMessageStat
+}
+
+// ErrorMessageStat is one distinct error message within a status-code
+// bucket, along with how many results produced it.
+type ErrorMessageStat struct {
+	Message string
+	Count   int
 }
 
 // BackendStats summarises the requests sent to a single backend, identified

@@ -4,7 +4,23 @@ import (
 	"math"
 	"sort"
 	"time"
+	"unicode/utf8"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+// topErrorMessages is the maximum number of distinct error messages kept
+// per status-code bucket. Three is enough to surface the dominant failure
+// modes without flooding the report; an aggressive long tail still
+// contributes to Count.
+const topErrorMessages = 3
+
+// maxErrorMessageLen is the rune length at which a message gets truncated
+// for display. 80 fits a single terminal line after the code/count
+// prefix; longer messages get a trailing "..." appended in place of the
+// cut portion.
+const maxErrorMessageLen = 80
 
 func aggregate(results []Result, elapsed time.Duration, connModel string) Summary {
 	s := Summary{
@@ -55,8 +71,108 @@ func aggregate(results []Result, elapsed time.Duration, connModel string) Summar
 
 	s.Backends = computeBackends(results, s.Count)
 	s.BackendSkew = computeBackendSkew(s.Backends)
+	s.Errors = computeStatusCodes(results)
 
 	return s
+}
+
+// computeStatusCodes groups errored results by gRPC status code, counts
+// each distinct error message within the bucket, and returns up to the top
+// topErrorMessages messages per code (truncated to maxErrorMessageLen
+// runes). Non-status errors collapse into codes.Unknown so wrapped
+// conn-acquire failures still get categorised. The returned slice is
+// sorted by Count descending, then Code ascending, mirroring the
+// per-backend ordering.
+func computeStatusCodes(results []Result) []StatusCodeStats {
+	if len(results) == 0 {
+		return nil
+	}
+
+	type bucket struct {
+		count    int
+		messages map[string]int
+	}
+	buckets := make(map[codes.Code]*bucket)
+	for _, r := range results {
+		if r.Err == nil {
+			continue
+		}
+		code := status.Code(r.Err)
+		msg := errorMessage(r.Err)
+		b, ok := buckets[code]
+		if !ok {
+			b = &bucket{messages: make(map[string]int)}
+			buckets[code] = b
+		}
+		b.count++
+		b.messages[truncateMessage(msg)]++
+	}
+	if len(buckets) == 0 {
+		return nil
+	}
+
+	out := make([]StatusCodeStats, 0, len(buckets))
+	for code, b := range buckets {
+		out = append(out, StatusCodeStats{
+			Code:        code,
+			CodeName:    code.String(),
+			Count:       b.count,
+			TopMessages: topMessages(b.messages),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Code < out[j].Code
+	})
+	return out
+}
+
+// errorMessage extracts the human-readable message from an error. For gRPC
+// status errors the Message() field carries the server-supplied string;
+// for any other error type we fall back to Error() so wrapped failures
+// from outside the call path (e.g., conn-acquire) still report something.
+func errorMessage(err error) string {
+	if s, ok := status.FromError(err); ok {
+		return s.Message()
+	}
+	return err.Error()
+}
+
+// truncateMessage clips a message at maxErrorMessageLen runes and appends
+// "..." in place of the cut portion. Short messages pass through
+// unchanged. Rune-counted rather than byte-counted so UTF-8 strings do
+// not truncate mid-codepoint.
+func truncateMessage(msg string) string {
+	if utf8.RuneCountInString(msg) <= maxErrorMessageLen {
+		return msg
+	}
+	runes := []rune(msg)
+	return string(runes[:maxErrorMessageLen]) + "..."
+}
+
+// topMessages returns up to topErrorMessages entries from the message
+// histogram, sorted by Count descending then Message ascending so output
+// is deterministic when several messages tie on count.
+func topMessages(messages map[string]int) []ErrorMessageStat {
+	if len(messages) == 0 {
+		return nil
+	}
+	stats := make([]ErrorMessageStat, 0, len(messages))
+	for msg, c := range messages {
+		stats = append(stats, ErrorMessageStat{Message: msg, Count: c})
+	}
+	sort.Slice(stats, func(i, j int) bool {
+		if stats[i].Count != stats[j].Count {
+			return stats[i].Count > stats[j].Count
+		}
+		return stats[i].Message < stats[j].Message
+	})
+	if len(stats) > topErrorMessages {
+		stats = stats[:topErrorMessages]
+	}
+	return stats
 }
 
 // computeBackendSkew measures imbalance across backends. CountRatio reports

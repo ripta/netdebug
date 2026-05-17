@@ -22,6 +22,7 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 			"%s\n"+
 			"%s\n"+
 			"%s\n"+
+			"%s\n"+
 			"%s",
 		c.Target,
 		c.Concurrency,
@@ -36,8 +37,40 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 		latencyStatsBlock("network", s.Network),
 		backendsBlock(s.Backends),
 		backendSkewLine(s.BackendSkew),
+		statusCodeBlock(s.Errors),
 	)
 	return err
+}
+
+// statusCodeBlock renders the per-status-code error breakdown. Each line
+// names the code, its total error count, and up to topErrorMessages
+// distinct messages with their counts. Returns "Errors by code: n/a"
+// when no errors were observed so a successful run still gets a
+// stable-shaped report.
+func statusCodeBlock(stats []StatusCodeStats) string {
+	if len(stats) == 0 {
+		return "Errors by code: n/a"
+	}
+	var sb strings.Builder
+	sb.WriteString("Errors by code:\n")
+	for i, st := range stats {
+		fmt.Fprintf(&sb, "  %s (%d req): %s", st.CodeName, st.Count, formatTopMessages(st.TopMessages))
+		if i < len(stats)-1 {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
+func formatTopMessages(msgs []ErrorMessageStat) string {
+	if len(msgs) == 0 {
+		return "(no message)"
+	}
+	parts := make([]string, len(msgs))
+	for i, m := range msgs {
+		parts[i] = fmt.Sprintf("%q (%d)", m.Message, m.Count)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func backendSkewLine(s BackendSkew) string {

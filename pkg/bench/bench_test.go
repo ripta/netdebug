@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
 	echov1 "github.com/ripta/netdebug/pkg/echo/v1"
@@ -80,6 +82,63 @@ func TestRun_BufconnSmoke(t *testing.T) {
 	} {
 		assert.Contains(t, out, want)
 	}
+}
+
+// newBufconnErrorServer stands up an echo server whose Echo handler is
+// short-circuited by a unary server interceptor returning the given
+// status. The interceptor sits in front of the real Echoer, so the
+// handler never runs; the bench client sees nothing but the forced
+// status, which is what TestRun_ForcedErrors_GroupedByCode needs.
+func newBufconnErrorServer(t *testing.T, code codes.Code, msg string) *bufconn.Listener {
+	t.Helper()
+
+	lis := bufconn.Listen(1 << 20)
+	gs := grpc.NewServer(grpc.UnaryInterceptor(
+		func(_ context.Context, _ any, _ *grpc.UnaryServerInfo, _ grpc.UnaryHandler) (any, error) {
+			return nil, status.Error(code, msg)
+		},
+	))
+	echov1.RegisterEchoerServer(gs, &echov1.Server{})
+
+	go func() {
+		if err := gs.Serve(lis); err != nil {
+			t.Logf("grpc serve returned: %v", err)
+		}
+	}()
+	t.Cleanup(gs.Stop)
+
+	return lis
+}
+
+func TestRun_ForcedErrors_GroupedByCode(t *testing.T) {
+	lis := newBufconnErrorServer(t, codes.InvalidArgument, "boom")
+
+	cfg := &Config{
+		Target:      "passthrough://bufnet",
+		Plaintext:   true,
+		Concurrency: 2,
+		Duration:    200 * time.Millisecond,
+		Payload:     defaultMix,
+		Compression: CompressionIdentity,
+		ConnModel:   ConnModelPerWorker,
+		Output:      io.Discard,
+		dialOpts:    bufconnDialOpts(lis),
+	}
+
+	s, err := cfg.run(context.Background())
+	require.NoError(t, err)
+
+	assert.Greater(t, s.Count, 0, "should issue at least one request")
+	assert.Equal(t, s.Count, s.ErrorCount, "every request was forced to fail")
+
+	require.Len(t, s.Errors, 1, "single forced code should produce one bucket")
+	got := s.Errors[0]
+	assert.Equal(t, codes.InvalidArgument, got.Code)
+	assert.Equal(t, "InvalidArgument", got.CodeName)
+	assert.Equal(t, s.ErrorCount, got.Count, "bucket counts every errored result")
+	require.Len(t, got.TopMessages, 1)
+	assert.Equal(t, "boom", got.TopMessages[0].Message)
+	assert.Equal(t, s.ErrorCount, got.TopMessages[0].Count)
 }
 
 func TestRun_BufconnPopulatesSummary(t *testing.T) {
