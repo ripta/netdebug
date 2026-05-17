@@ -21,9 +21,22 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 		ErrorCount: 2,
 		Elapsed:    5 * time.Second,
 		Throughput: 20,
-		LatencyP50: 3 * time.Millisecond,
-		LatencyP99: 12 * time.Millisecond,
 		ConnModel:  ConnModelPerWorker,
+		Total: LatencyStats{
+			Count: 98, Min: time.Millisecond, Mean: 4 * time.Millisecond,
+			Stddev: 2 * time.Millisecond, Max: 20 * time.Millisecond,
+			P50: 3 * time.Millisecond, P90: 8 * time.Millisecond, P99: 12 * time.Millisecond,
+		},
+		Server: LatencyStats{
+			Count: 98, Min: 500 * time.Microsecond, Mean: 2 * time.Millisecond,
+			Stddev: time.Millisecond, Max: 10 * time.Millisecond,
+			P50: 2 * time.Millisecond, P90: 5 * time.Millisecond, P99: 8 * time.Millisecond,
+		},
+		Network: LatencyStats{
+			Count: 98, Min: 500 * time.Microsecond, Mean: 2 * time.Millisecond,
+			Stddev: time.Millisecond, Max: 10 * time.Millisecond,
+			P50: time.Millisecond, P90: 3 * time.Millisecond, P99: 4 * time.Millisecond,
+		},
 	}
 
 	var buf bytes.Buffer
@@ -39,8 +52,17 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 		"Errors:      2",
 		"Elapsed:     5s",
 		"Throughput:  20.00 req/s",
-		"Latency p50: 3ms",
-		"Latency p99: 12ms",
+		"Latency (total):",
+		"Latency (server):",
+		"Latency (network):",
+		"count:  98",
+		"min:    1ms",
+		"mean:   4ms",
+		"stddev: 2ms",
+		"p50:    3ms",
+		"p90:    8ms",
+		"p99:    12ms",
+		"max:    20ms",
 	} {
 		assert.Contains(t, out, want)
 	}
@@ -54,8 +76,9 @@ func TestWriteReport_NoSuccessesRendersNA(t *testing.T) {
 	require.NoError(t, writeReport(&buf, cfg, s))
 
 	out := buf.String()
-	assert.Contains(t, out, "Latency p50: n/a")
-	assert.Contains(t, out, "Latency p99: n/a")
+	assert.Contains(t, out, "Latency (total): n/a")
+	assert.Contains(t, out, "Latency (server): n/a")
+	assert.Contains(t, out, "Latency (network): n/a")
 	assert.Contains(t, out, "Errors:      3")
 }
 

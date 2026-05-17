@@ -72,8 +72,11 @@ func TestRun_BufconnSmoke(t *testing.T) {
 		"Requests:",
 		"Errors:      0",
 		"Throughput:",
-		"Latency p50:",
-		"Latency p99:",
+		"Latency (total):",
+		"Latency (server):",
+		"Latency (network):",
+		"p50:",
+		"p99:",
 	} {
 		assert.Contains(t, out, want)
 	}
@@ -99,8 +102,12 @@ func TestRun_BufconnPopulatesSummary(t *testing.T) {
 
 	assert.Greater(t, s.Count, 0, "should issue at least one request")
 	assert.Equal(t, 0, s.ErrorCount)
-	assert.Greater(t, s.LatencyP50, time.Duration(0))
-	assert.Greater(t, s.LatencyP99, time.Duration(0))
+	assert.Equal(t, s.Count, s.Total.Count)
+	assert.Greater(t, s.Total.P50, time.Duration(0))
+	assert.Greater(t, s.Total.P99, time.Duration(0))
+	assert.Equal(t, s.Count, s.Server.Count)
+	assert.Greater(t, s.Server.P50, time.Duration(0))
+	assert.Equal(t, s.Count, s.Network.Count)
 	assert.Greater(t, s.Throughput, 0.0)
 	assert.Equal(t, ConnModelPerWorker, s.ConnModel)
 }

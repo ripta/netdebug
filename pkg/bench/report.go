@@ -3,11 +3,9 @@ package bench
 import (
 	"fmt"
 	"io"
-	"time"
 )
 
 func writeReport(w io.Writer, c *Config, s Summary) error {
-	successes := s.Count - s.ErrorCount
 	_, err := fmt.Fprintf(w,
 		"Target:      %s\n"+
 			"Concurrency: %d\n"+
@@ -18,8 +16,10 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 			"Errors:      %d\n"+
 			"Elapsed:     %s\n"+
 			"Throughput:  %.2f req/s\n"+
-			"Latency p50: %s\n"+
-			"Latency p99: %s\n",
+			"\n"+
+			"%s\n"+
+			"%s\n"+
+			"%s",
 		c.Target,
 		c.Concurrency,
 		c.Duration,
@@ -28,15 +28,35 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 		s.ErrorCount,
 		s.Elapsed,
 		s.Throughput,
-		latencyString(successes, s.LatencyP50),
-		latencyString(successes, s.LatencyP99),
+		latencyStatsBlock("total", s.Total),
+		latencyStatsBlock("server", s.Server),
+		latencyStatsBlock("network", s.Network),
 	)
 	return err
 }
 
-func latencyString(successes int, d time.Duration) string {
-	if successes <= 0 {
-		return "n/a"
+func latencyStatsBlock(name string, stats LatencyStats) string {
+	if stats.Count == 0 {
+		return fmt.Sprintf("Latency (%s): n/a", name)
 	}
-	return d.String()
+	return fmt.Sprintf(
+		"Latency (%s):\n"+
+			"  count:  %d\n"+
+			"  min:    %s\n"+
+			"  mean:   %s\n"+
+			"  stddev: %s\n"+
+			"  p50:    %s\n"+
+			"  p90:    %s\n"+
+			"  p99:    %s\n"+
+			"  max:    %s",
+		name,
+		stats.Count,
+		stats.Min,
+		stats.Mean,
+		stats.Stddev,
+		stats.P50,
+		stats.P90,
+		stats.P99,
+		stats.Max,
+	)
 }

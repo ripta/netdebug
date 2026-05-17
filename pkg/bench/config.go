@@ -156,7 +156,7 @@ func (c *Config) run(ctx context.Context) (Summary, error) {
 		results = append(results, w.results...)
 	}
 
-	return summarize(results, elapsed(results), c.ConnModel), nil
+	return aggregate(results, elapsed(results), c.ConnModel), nil
 }
 
 func (c *Config) output() io.Writer {
