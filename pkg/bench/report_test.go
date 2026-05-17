@@ -41,6 +41,7 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 			{Key: "pod-a", Source: "pod_name", Count: 60, PercentOfTotal: 60, P50: 3 * time.Millisecond, P99: 9 * time.Millisecond, ErrorCount: 1},
 			{Key: "pod-b", Source: "pod_name", Count: 40, PercentOfTotal: 40, P50: 4 * time.Millisecond, P99: 12 * time.Millisecond, ErrorCount: 1},
 		},
+		BackendSkew: BackendSkew{CountRatio: 1.5, P99Ratio: 12.0 / 9.0},
 	}
 
 	var buf bytes.Buffer
@@ -70,6 +71,7 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 		"Backends:",
 		"pod_name=pod-a (60 req, 60.0%): p50=3ms p99=9ms errors=1",
 		"pod_name=pod-b (40 req, 40.0%): p50=4ms p99=12ms errors=1",
+		"Backend skew: count=1.50 p99=1.33",
 	} {
 		assert.Contains(t, out, want)
 	}
@@ -87,6 +89,7 @@ func TestWriteReport_NoSuccessesRendersNA(t *testing.T) {
 	assert.Contains(t, out, "Latency (server): n/a")
 	assert.Contains(t, out, "Latency (network): n/a")
 	assert.Contains(t, out, "Backends: n/a")
+	assert.Contains(t, out, "Backend skew: count=n/a p99=n/a")
 	assert.Contains(t, out, "Errors:      3")
 }
 

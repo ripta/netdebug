@@ -54,8 +54,54 @@ func aggregate(results []Result, elapsed time.Duration, connModel string) Summar
 	}
 
 	s.Backends = computeBackends(results, s.Count)
+	s.BackendSkew = computeBackendSkew(s.Backends)
 
 	return s
+}
+
+// computeBackendSkew measures imbalance across backends. CountRatio reports
+// max/min request counts including error-only backends, since a backend
+// that received only errors still received traffic. P99Ratio restricts to
+// backends with at least one successful sample so a fully broken backend
+// does not divide by zero. Either ratio is left at zero when fewer than
+// two backends qualify.
+func computeBackendSkew(backends []BackendStats) BackendSkew {
+	var skew BackendSkew
+
+	if len(backends) >= 2 {
+		minC, maxC := backends[0].Count, backends[0].Count
+		for _, b := range backends[1:] {
+			if b.Count < minC {
+				minC = b.Count
+			}
+			if b.Count > maxC {
+				maxC = b.Count
+			}
+		}
+		if minC > 0 {
+			skew.CountRatio = float64(maxC) / float64(minC)
+		}
+	}
+
+	var minP99, maxP99 time.Duration
+	qualifying := 0
+	for _, b := range backends {
+		if b.P99 == 0 {
+			continue
+		}
+		if qualifying == 0 || b.P99 < minP99 {
+			minP99 = b.P99
+		}
+		if qualifying == 0 || b.P99 > maxP99 {
+			maxP99 = b.P99
+		}
+		qualifying++
+	}
+	if qualifying >= 2 && minP99 > 0 {
+		skew.P99Ratio = float64(maxP99) / float64(minP99)
+	}
+
+	return skew
 }
 
 // computeBackends groups results by backendKey and emits one BackendStats

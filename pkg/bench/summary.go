@@ -24,7 +24,8 @@ type Summary struct {
 	Server  LatencyStats
 	Network LatencyStats
 
-	Backends []BackendStats
+	Backends    []BackendStats
+	BackendSkew BackendSkew
 }
 
 // BackendStats summarises the requests sent to a single backend, identified
@@ -38,4 +39,16 @@ type BackendStats struct {
 	PercentOfTotal float64
 	P50            time.Duration
 	P99            time.Duration
+}
+
+// BackendSkew captures imbalance across backends. CountRatio is
+// max-count/min-count across every backend that received traffic; one slow
+// or one overloaded replica shows up as a large ratio. P99Ratio is
+// max-p99/min-p99 across backends that recorded at least one successful
+// sample, so a fully broken backend does not divide by zero. Either ratio
+// is zero when fewer than two backends qualify; the report renders that as
+// n/a.
+type BackendSkew struct {
+	CountRatio float64
+	P99Ratio   float64
 }

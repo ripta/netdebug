@@ -21,6 +21,7 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 			"%s\n"+
 			"%s\n"+
 			"%s\n"+
+			"%s\n"+
 			"%s",
 		c.Target,
 		c.Concurrency,
@@ -34,8 +35,21 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 		latencyStatsBlock("server", s.Server),
 		latencyStatsBlock("network", s.Network),
 		backendsBlock(s.Backends),
+		backendSkewLine(s.BackendSkew),
 	)
 	return err
+}
+
+func backendSkewLine(s BackendSkew) string {
+	return fmt.Sprintf("Backend skew: count=%s p99=%s",
+		formatRatio(s.CountRatio), formatRatio(s.P99Ratio))
+}
+
+func formatRatio(r float64) string {
+	if r == 0 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.2f", r)
 }
 
 func backendsBlock(backends []BackendStats) string {

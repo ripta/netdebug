@@ -434,6 +434,83 @@ func TestBackendKey(t *testing.T) {
 	}
 }
 
+type computeBackendSkewTest struct {
+	Name          string
+	Backends      []BackendStats
+	WantCountRate float64
+	WantP99Rate   float64
+}
+
+var computeBackendSkewTests = []computeBackendSkewTest{
+	{
+		Name:     "empty input has no skew",
+		Backends: nil,
+	},
+	{
+		Name:     "single backend has no skew to measure",
+		Backends: []BackendStats{{Key: "pod-a", Count: 10, P99: ms(5)}},
+	},
+	{
+		Name: "even counts and equal p99 yield 1.0",
+		Backends: []BackendStats{
+			{Key: "pod-a", Count: 50, P99: ms(4)},
+			{Key: "pod-b", Count: 50, P99: ms(4)},
+		},
+		WantCountRate: 1.0,
+		WantP99Rate:   1.0,
+	},
+	{
+		// 60/40 = 1.5; 12ms / 9ms = 1.333...
+		Name: "60/40 split with 9ms vs 12ms p99",
+		Backends: []BackendStats{
+			{Key: "pod-a", Count: 60, P99: ms(9)},
+			{Key: "pod-b", Count: 40, P99: ms(12)},
+		},
+		WantCountRate: 1.5,
+		WantP99Rate:   12.0 / 9.0,
+	},
+	{
+		// pod-c has only errors, so its P99 is zero and it does not
+		// contribute to the p99 ratio; it does contribute to count.
+		Name: "error-only backend ignored by p99 but counts toward count",
+		Backends: []BackendStats{
+			{Key: "pod-a", Count: 50, P99: ms(6)},
+			{Key: "pod-b", Count: 30, P99: ms(9)},
+			{Key: "pod-c", Count: 10, ErrorCount: 10, P99: 0},
+		},
+		WantCountRate: 5.0,
+		WantP99Rate:   9.0 / 6.0,
+	},
+	{
+		Name: "all-error backends report count ratio but no p99 ratio",
+		Backends: []BackendStats{
+			{Key: "pod-a", Count: 10, ErrorCount: 10, P99: 0},
+			{Key: "pod-b", Count: 5, ErrorCount: 5, P99: 0},
+		},
+		WantCountRate: 2.0,
+	},
+	{
+		// Only one backend has any successful samples; p99 ratio needs
+		// at least two qualifying backends.
+		Name: "single-success backend leaves p99 ratio undefined",
+		Backends: []BackendStats{
+			{Key: "pod-a", Count: 50, P99: ms(8)},
+			{Key: "pod-b", Count: 50, ErrorCount: 50, P99: 0},
+		},
+		WantCountRate: 1.0,
+	},
+}
+
+func TestComputeBackendSkew(t *testing.T) {
+	for _, tc := range computeBackendSkewTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			got := computeBackendSkew(tc.Backends)
+			assert.InDelta(t, tc.WantCountRate, got.CountRatio, 1e-9, "CountRatio")
+			assert.InDelta(t, tc.WantP99Rate, got.P99Ratio, 1e-9, "P99Ratio")
+		})
+	}
+}
+
 func ascendingResults(n int) []Result {
 	rs := make([]Result, n)
 	for i := range rs {
