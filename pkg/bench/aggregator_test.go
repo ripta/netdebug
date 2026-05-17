@@ -676,6 +676,96 @@ func TestComputeStatusCodes(t *testing.T) {
 	}
 }
 
+type aggregateUpstreamTest struct {
+	Name      string
+	Results   []Result
+	WantCount int
+	WantMin   time.Duration
+	WantMax   time.Duration
+	WantP50   time.Duration
+}
+
+var aggregateUpstreamTests = []aggregateUpstreamTest{
+	{
+		Name: "no results carry the header so upstream series is empty",
+		Results: []Result{
+			{TotalDuration: ms(5)},
+			{TotalDuration: ms(7)},
+			{TotalDuration: ms(9)},
+		},
+	},
+	{
+		Name: "every result carries the header so upstream covers all successes",
+		Results: []Result{
+			{TotalDuration: ms(5), HasUpstreamTime: true, UpstreamDurationNs: int64(ms(1))},
+			{TotalDuration: ms(7), HasUpstreamTime: true, UpstreamDurationNs: int64(ms(2))},
+			{TotalDuration: ms(9), HasUpstreamTime: true, UpstreamDurationNs: int64(ms(3))},
+		},
+		WantCount: 3,
+		WantMin:   ms(1),
+		WantMax:   ms(3),
+		WantP50:   ms(2),
+	},
+	{
+		// Partial coverage is the realistic case under a mesh rollout in
+		// progress; only the header-bearing results contribute, and the
+		// reported count reflects sidecar coverage rather than total
+		// successful requests.
+		Name: "mixed coverage counts only header-bearing successes",
+		Results: []Result{
+			{TotalDuration: ms(5), HasUpstreamTime: true, UpstreamDurationNs: int64(ms(2))},
+			{TotalDuration: ms(7)},
+			{TotalDuration: ms(9), HasUpstreamTime: true, UpstreamDurationNs: int64(ms(4))},
+			{TotalDuration: ms(11)},
+		},
+		WantCount: 2,
+		WantMin:   ms(2),
+		WantMax:   ms(4),
+		WantP50:   ms(2),
+	},
+	{
+		// Header value of zero is legal: an idealised sidecar may report
+		// the upstream took under a millisecond. The bool flag carries
+		// presence, so a zero-value sample still contributes to the
+		// series.
+		Name: "zero-millisecond header is a valid sample",
+		Results: []Result{
+			{TotalDuration: ms(5), HasUpstreamTime: true, UpstreamDurationNs: 0},
+			{TotalDuration: ms(7), HasUpstreamTime: true, UpstreamDurationNs: int64(ms(1))},
+		},
+		WantCount: 2,
+		WantMin:   0,
+		WantMax:   ms(1),
+		WantP50:   0,
+	},
+	{
+		// Errors never contribute to the upstream series even when the
+		// caller somehow attached a header — the aggregator gates on
+		// success first.
+		Name: "errored results do not contribute even when header-bearing",
+		Results: []Result{
+			{Err: errors.New("boom"), HasUpstreamTime: true, UpstreamDurationNs: int64(ms(5))},
+			{TotalDuration: ms(7), HasUpstreamTime: true, UpstreamDurationNs: int64(ms(3))},
+		},
+		WantCount: 1,
+		WantMin:   ms(3),
+		WantMax:   ms(3),
+		WantP50:   ms(3),
+	},
+}
+
+func TestAggregate_Upstream(t *testing.T) {
+	for _, tc := range aggregateUpstreamTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			s := aggregate(tc.Results, time.Second, ConnModelPerWorker)
+			assert.Equal(t, tc.WantCount, s.Upstream.Count, "Upstream.Count")
+			assert.Equal(t, tc.WantMin, s.Upstream.Min, "Upstream.Min")
+			assert.Equal(t, tc.WantMax, s.Upstream.Max, "Upstream.Max")
+			assert.Equal(t, tc.WantP50, s.Upstream.P50, "Upstream.P50")
+		})
+	}
+}
+
 func TestComputeStatusCodes_TruncatesLongMessages(t *testing.T) {
 	long := strings.Repeat("x", maxErrorMessageLen+10)
 	got := computeStatusCodes([]Result{

@@ -38,6 +38,11 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 			Stddev: time.Millisecond, Max: 10 * time.Millisecond,
 			P50: time.Millisecond, P90: 3 * time.Millisecond, P99: 4 * time.Millisecond,
 		},
+		Upstream: LatencyStats{
+			Count: 50, Min: time.Millisecond, Mean: 3 * time.Millisecond,
+			Stddev: time.Millisecond, Max: 9 * time.Millisecond,
+			P50: 3 * time.Millisecond, P90: 6 * time.Millisecond, P99: 8 * time.Millisecond,
+		},
 		Backends: []BackendStats{
 			{Key: "pod-a", Source: "pod_name", Count: 60, PercentOfTotal: 60, P50: 3 * time.Millisecond, P99: 9 * time.Millisecond, ErrorCount: 1},
 			{Key: "pod-b", Source: "pod_name", Count: 40, PercentOfTotal: 40, P50: 4 * time.Millisecond, P99: 12 * time.Millisecond, ErrorCount: 1},
@@ -70,6 +75,8 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 		"Latency (total):",
 		"Latency (server):",
 		"Latency (network):",
+		"Latency (upstream):",
+		"count:  50",
 		"count:  98",
 		"min:    1ms",
 		"mean:   4ms",
@@ -100,6 +107,7 @@ func TestWriteReport_NoSuccessesRendersNA(t *testing.T) {
 	assert.Contains(t, out, "Latency (total): n/a")
 	assert.Contains(t, out, "Latency (server): n/a")
 	assert.Contains(t, out, "Latency (network): n/a")
+	assert.Contains(t, out, "Latency (upstream): n/a")
 	assert.Contains(t, out, "Backends: n/a")
 	assert.Contains(t, out, "Backend skew: count=n/a p99=n/a")
 	assert.Contains(t, out, "Errors:      3")

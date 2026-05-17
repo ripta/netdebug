@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"strconv"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
@@ -139,6 +141,62 @@ func TestRun_ForcedErrors_GroupedByCode(t *testing.T) {
 	require.Len(t, got.TopMessages, 1)
 	assert.Equal(t, "boom", got.TopMessages[0].Message)
 	assert.Equal(t, s.ErrorCount, got.TopMessages[0].Count)
+}
+
+// newBufconnUpstreamHeaderServer stands up an echo server whose unary
+// interceptor injects a synthetic x-envoy-upstream-service-time
+// response header before delegating to the real handler. Modelled on
+// newBufconnErrorServer so the test mirrors the established harness.
+func newBufconnUpstreamHeaderServer(t *testing.T, ms int) *bufconn.Listener {
+	t.Helper()
+
+	lis := bufconn.Listen(1 << 20)
+	gs := grpc.NewServer(grpc.UnaryInterceptor(
+		func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
+			if err := grpc.SetHeader(ctx, metadata.Pairs(headerEnvoyUpstreamTime, strconv.Itoa(ms))); err != nil {
+				t.Logf("setting envoy header: %v", err)
+			}
+			return h(ctx, req)
+		},
+	))
+	echov1.RegisterEchoerServer(gs, &echov1.Server{})
+
+	go func() {
+		if err := gs.Serve(lis); err != nil {
+			t.Logf("grpc serve returned: %v", err)
+		}
+	}()
+	t.Cleanup(gs.Stop)
+
+	return lis
+}
+
+func TestRun_CapturesEnvoyUpstreamHeader(t *testing.T) {
+	const upstreamMs = 7
+	lis := newBufconnUpstreamHeaderServer(t, upstreamMs)
+
+	cfg := &Config{
+		Target:      "passthrough://bufnet",
+		Plaintext:   true,
+		Concurrency: 2,
+		Duration:    200 * time.Millisecond,
+		Payload:     defaultMix,
+		Compression: CompressionIdentity,
+		ConnModel:   ConnModelPerWorker,
+		Output:      io.Discard,
+		dialOpts:    bufconnDialOpts(lis),
+	}
+
+	s, err := cfg.run(context.Background())
+	require.NoError(t, err)
+
+	assert.Greater(t, s.Count, 0, "should issue at least one request")
+	assert.Equal(t, 0, s.ErrorCount)
+	want := time.Duration(upstreamMs) * time.Millisecond
+	assert.Equal(t, s.Count, s.Upstream.Count, "every successful request should carry the header")
+	assert.Equal(t, want, s.Upstream.Min)
+	assert.Equal(t, want, s.Upstream.Max)
+	assert.Equal(t, want, s.Upstream.P50)
 }
 
 func TestRun_BufconnPopulatesSummary(t *testing.T) {

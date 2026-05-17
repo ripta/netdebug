@@ -24,9 +24,10 @@ type Summary struct {
 	Throughput float64
 	ConnModel  string
 
-	Total   LatencyStats
-	Server  LatencyStats
-	Network LatencyStats
+	Total    LatencyStats
+	Server   LatencyStats
+	Network  LatencyStats
+	Upstream LatencyStats
 
 	Backends    []BackendStats
 	BackendSkew BackendSkew

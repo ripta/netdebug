@@ -5,16 +5,24 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"strconv"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 
 	echov1 "github.com/ripta/netdebug/pkg/echo/v1"
 )
+
+// headerEnvoyUpstreamTime is the response header Envoy adds when an
+// Istio sidecar sits in front of the backend. Its value is the integer
+// number of milliseconds the upstream took, as observed by the sidecar.
+// Linkerd2-proxy does not emit an equivalent header.
+const headerEnvoyUpstreamTime = "x-envoy-upstream-service-time"
 
 type worker struct {
 	pool        ConnPool
@@ -67,8 +75,13 @@ func (w *worker) doCall(ctx context.Context, conn *grpc.ClientConn) {
 	bag := &wireBytes{}
 	callCtx := contextWithWireBytes(ctx, bag)
 	var peerInfo peer.Peer
+	var hdrMD metadata.MD
 	start := time.Now()
-	rsp, err := client.Echo(callCtx, req, grpc.UseCompressor(w.compression), grpc.Peer(&peerInfo))
+	rsp, err := client.Echo(callCtx, req,
+		grpc.UseCompressor(w.compression),
+		grpc.Peer(&peerInfo),
+		grpc.Header(&hdrMD),
+	)
 	end := time.Now()
 
 	if err != nil && (ctx.Err() != nil || isCancellation(err)) {
@@ -93,6 +106,12 @@ func (w *worker) doCall(ctx context.Context, conn *grpc.ClientConn) {
 		if rsp.Kubernetes != nil {
 			r.PodName = rsp.Kubernetes.PodName
 			r.PodHostname = rsp.Kubernetes.Hostname
+		}
+		if vals := hdrMD.Get(headerEnvoyUpstreamTime); len(vals) > 0 {
+			if ms, perr := strconv.ParseInt(vals[0], 10, 64); perr == nil {
+				r.HasUpstreamTime = true
+				r.UpstreamDurationNs = ms * int64(time.Millisecond)
+			}
 		}
 	}
 	w.results = append(w.results, r)

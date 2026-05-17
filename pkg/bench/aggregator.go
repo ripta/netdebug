@@ -46,6 +46,7 @@ func aggregate(results []Result, elapsed time.Duration, connModel string) Summar
 		total := make([]time.Duration, 0, successes)
 		server := make([]time.Duration, 0, successes)
 		network := make([]time.Duration, 0, successes)
+		upstream := make([]time.Duration, 0, successes)
 		for _, r := range results {
 			if r.Err != nil {
 				continue
@@ -58,15 +59,20 @@ func aggregate(results []Result, elapsed time.Duration, connModel string) Summar
 			total = append(total, r.TotalDuration)
 			server = append(server, srv)
 			network = append(network, net)
+			if r.HasUpstreamTime {
+				upstream = append(upstream, time.Duration(r.UpstreamDurationNs))
+			}
 		}
 
 		sort.Slice(total, func(i, j int) bool { return total[i] < total[j] })
 		sort.Slice(server, func(i, j int) bool { return server[i] < server[j] })
 		sort.Slice(network, func(i, j int) bool { return network[i] < network[j] })
+		sort.Slice(upstream, func(i, j int) bool { return upstream[i] < upstream[j] })
 
 		s.Total = computeLatencyStats(total)
 		s.Server = computeLatencyStats(server)
 		s.Network = computeLatencyStats(network)
+		s.Upstream = computeLatencyStats(upstream)
 	}
 
 	s.Backends = computeBackends(results, s.Count)

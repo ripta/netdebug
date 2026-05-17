@@ -7,6 +7,8 @@ type Result struct {
 	End                       time.Time
 	TotalDuration             time.Duration
 	ServerDurationNs          int64
+	UpstreamDurationNs        int64
+	HasUpstreamTime           bool
 	BytesSentUncompressed     int64
 	BytesSentWire             int64
 	BytesReceivedUncompressed int64

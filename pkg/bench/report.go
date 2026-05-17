@@ -23,6 +23,7 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 			"%s\n"+
 			"%s\n"+
 			"%s\n"+
+			"%s\n"+
 			"%s",
 		c.Target,
 		c.Concurrency,
@@ -35,6 +36,7 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 		latencyStatsBlock("total", s.Total),
 		latencyStatsBlock("server", s.Server),
 		latencyStatsBlock("network", s.Network),
+		latencyStatsBlock("upstream", s.Upstream),
 		backendsBlock(s.Backends),
 		backendSkewLine(s.BackendSkew),
 		statusCodeBlock(s.Errors),
