@@ -105,15 +105,16 @@ func TestEchoBackends_DialerRotates(t *testing.T) {
 
 func multibackendConfig(be *echoBackends, model string, concurrency int) *Config {
 	return &Config{
-		Target:      "passthrough://bufnet",
-		Plaintext:   true,
-		Concurrency: concurrency,
-		Duration:    200 * time.Millisecond,
-		Payload:     defaultMix,
-		Compression: CompressionIdentity,
-		ConnModel:   model,
-		Output:      io.Discard,
-		dialOpts:    be.dialOpts(),
+		Target:       "passthrough://bufnet",
+		Plaintext:    true,
+		Concurrency:  concurrency,
+		Duration:     200 * time.Millisecond,
+		Payload:      defaultMix,
+		Compression:  CompressionIdentity,
+		ConnModel:    model,
+		OutputFormat: OutputFormatHuman,
+		Output:       io.Discard,
+		dialOpts:     be.dialOpts(),
 	}
 }
 

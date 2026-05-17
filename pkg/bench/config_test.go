@@ -25,6 +25,7 @@ func TestNew_Defaults(t *testing.T) {
 	assert.Equal(t, 1024, c.StringLen)
 	assert.Equal(t, CompressionIdentity, c.Compression)
 	assert.Equal(t, ConnModelPerWorker, c.ConnModel)
+	assert.Equal(t, OutputFormatHuman, c.OutputFormat)
 	assert.NotNil(t, c.Output)
 }
 
@@ -51,7 +52,7 @@ var configValidateTests = []configValidateTest{
 		Config: Config{
 			Target: "127.0.0.1:8080", Plaintext: true, Concurrency: 1, Duration: 10 * time.Second,
 			Payload: defaultMix, EmbeddingDim: 1024, BytesSize: 1024, StringLen: 1024,
-			Compression: CompressionIdentity, ConnModel: ConnModelPerWorker,
+			Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatHuman,
 		},
 		WantErr: false,
 	},
@@ -143,7 +144,7 @@ var configValidateTests = []configValidateTest{
 		Config: Config{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
 			Payload: defaultMix, EmbeddingDim: 0, BytesSize: 0, StringLen: 0,
-			Compression: CompressionIdentity, ConnModel: ConnModelPerWorker,
+			Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatHuman,
 		},
 		WantErr: false,
 	},
@@ -151,7 +152,7 @@ var configValidateTests = []configValidateTest{
 		Name: "gzip compression is accepted",
 		Config: Config{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
-			Payload: defaultMix, Compression: CompressionGzip, ConnModel: ConnModelPerWorker,
+			Payload: defaultMix, Compression: CompressionGzip, ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatHuman,
 		},
 		WantErr: false,
 	},
@@ -175,7 +176,7 @@ var configValidateTests = []configValidateTest{
 		Name: "shared conn-model is accepted",
 		Config: Config{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
-			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelShared,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelShared, OutputFormat: OutputFormatHuman,
 		},
 		WantErr: false,
 	},
@@ -183,9 +184,33 @@ var configValidateTests = []configValidateTest{
 		Name: "per-request conn-model is accepted",
 		Config: Config{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
-			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerRequest,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerRequest, OutputFormat: OutputFormatHuman,
 		},
 		WantErr: false,
+	},
+	{
+		Name: "json output is accepted",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatJSON,
+		},
+		WantErr: false,
+	},
+	{
+		Name: "empty output is rejected",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: "",
+		},
+		WantErr: true,
+	},
+	{
+		Name: "unknown output is rejected",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: "yaml",
+		},
+		WantErr: true,
 	},
 	{
 		Name: "empty conn-model is rejected",

@@ -50,15 +50,16 @@ func TestRun_BufconnSmoke(t *testing.T) {
 
 	var buf bytes.Buffer
 	cfg := &Config{
-		Target:      "passthrough://bufnet",
-		Plaintext:   true,
-		Concurrency: 2,
-		Duration:    200 * time.Millisecond,
-		Payload:     defaultMix,
-		Compression: CompressionIdentity,
-		ConnModel:   ConnModelPerWorker,
-		Output:      &buf,
-		dialOpts:    bufconnDialOpts(lis),
+		Target:       "passthrough://bufnet",
+		Plaintext:    true,
+		Concurrency:  2,
+		Duration:     200 * time.Millisecond,
+		Payload:      defaultMix,
+		Compression:  CompressionIdentity,
+		ConnModel:    ConnModelPerWorker,
+		OutputFormat: OutputFormatHuman,
+		Output:       &buf,
+		dialOpts:     bufconnDialOpts(lis),
 	}
 
 	start := time.Now()
@@ -116,15 +117,16 @@ func TestRun_ForcedErrors_GroupedByCode(t *testing.T) {
 	lis := newBufconnErrorServer(t, codes.InvalidArgument, "boom")
 
 	cfg := &Config{
-		Target:      "passthrough://bufnet",
-		Plaintext:   true,
-		Concurrency: 2,
-		Duration:    200 * time.Millisecond,
-		Payload:     defaultMix,
-		Compression: CompressionIdentity,
-		ConnModel:   ConnModelPerWorker,
-		Output:      io.Discard,
-		dialOpts:    bufconnDialOpts(lis),
+		Target:       "passthrough://bufnet",
+		Plaintext:    true,
+		Concurrency:  2,
+		Duration:     200 * time.Millisecond,
+		Payload:      defaultMix,
+		Compression:  CompressionIdentity,
+		ConnModel:    ConnModelPerWorker,
+		OutputFormat: OutputFormatHuman,
+		Output:       io.Discard,
+		dialOpts:     bufconnDialOpts(lis),
 	}
 
 	s, err := cfg.run(context.Background())
@@ -176,15 +178,16 @@ func TestRun_CapturesEnvoyUpstreamHeader(t *testing.T) {
 	lis := newBufconnUpstreamHeaderServer(t, upstreamMs)
 
 	cfg := &Config{
-		Target:      "passthrough://bufnet",
-		Plaintext:   true,
-		Concurrency: 2,
-		Duration:    200 * time.Millisecond,
-		Payload:     defaultMix,
-		Compression: CompressionIdentity,
-		ConnModel:   ConnModelPerWorker,
-		Output:      io.Discard,
-		dialOpts:    bufconnDialOpts(lis),
+		Target:       "passthrough://bufnet",
+		Plaintext:    true,
+		Concurrency:  2,
+		Duration:     200 * time.Millisecond,
+		Payload:      defaultMix,
+		Compression:  CompressionIdentity,
+		ConnModel:    ConnModelPerWorker,
+		OutputFormat: OutputFormatHuman,
+		Output:       io.Discard,
+		dialOpts:     bufconnDialOpts(lis),
 	}
 
 	s, err := cfg.run(context.Background())
@@ -203,15 +206,16 @@ func TestRun_BufconnPopulatesSummary(t *testing.T) {
 	lis := newBufconnEchoServer(t)
 
 	cfg := &Config{
-		Target:      "passthrough://bufnet",
-		Plaintext:   true,
-		Concurrency: 2,
-		Duration:    200 * time.Millisecond,
-		Payload:     defaultMix,
-		Compression: CompressionIdentity,
-		ConnModel:   ConnModelPerWorker,
-		Output:      io.Discard,
-		dialOpts:    bufconnDialOpts(lis),
+		Target:       "passthrough://bufnet",
+		Plaintext:    true,
+		Concurrency:  2,
+		Duration:     200 * time.Millisecond,
+		Payload:      defaultMix,
+		Compression:  CompressionIdentity,
+		ConnModel:    ConnModelPerWorker,
+		OutputFormat: OutputFormatHuman,
+		Output:       io.Discard,
+		dialOpts:     bufconnDialOpts(lis),
 	}
 
 	s, err := cfg.run(context.Background())

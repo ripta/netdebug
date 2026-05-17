@@ -16,6 +16,14 @@ import (
 	echov1 "github.com/ripta/netdebug/pkg/echo/v1"
 )
 
+// OutputFormat values accepted by --output. The human form is the default
+// and matches the existing stdout layout; the json form emits a single
+// pretty-printed object.
+const (
+	OutputFormatHuman = "human"
+	OutputFormatJSON  = "json"
+)
+
 type Config struct {
 	Target       string
 	Plaintext    bool
@@ -27,6 +35,7 @@ type Config struct {
 	StringLen    int
 	Compression  string
 	ConnModel    string
+	OutputFormat string
 	Output       io.Writer
 
 	dialOpts []grpc.DialOption
@@ -46,8 +55,17 @@ func New() *Config {
 		StringLen:    1024,
 		Compression:  CompressionIdentity,
 		ConnModel:    ConnModelPerWorker,
+		OutputFormat: OutputFormatHuman,
 		Output:       os.Stdout,
 	}
+}
+
+func isValidOutputFormat(s string) bool {
+	switch s {
+	case OutputFormatHuman, OutputFormatJSON:
+		return true
+	}
+	return false
 }
 
 func (c *Config) Validate() error {
@@ -88,6 +106,9 @@ func (c *Config) Validate() error {
 	if !isValidConnModel(c.ConnModel) {
 		return fmt.Errorf("conn-model %q is not one of per-worker, shared, per-request", c.ConnModel)
 	}
+	if !isValidOutputFormat(c.OutputFormat) {
+		return fmt.Errorf("output %q is not one of human, json", c.OutputFormat)
+	}
 	return nil
 }
 
@@ -96,7 +117,12 @@ func (c *Config) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return writeReport(c.output(), c, s)
+	switch c.OutputFormat {
+	case OutputFormatJSON:
+		return writeJSONReport(c.output(), c, s)
+	default:
+		return writeReport(c.output(), c, s)
+	}
 }
 
 func (c *Config) run(ctx context.Context) (Summary, error) {
