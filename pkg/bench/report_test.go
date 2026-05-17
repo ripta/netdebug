@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -263,4 +264,299 @@ func TestWriteJSONReport_PropagatesWriterError(t *testing.T) {
 		ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatJSON,
 	}
 	assert.Error(t, writeJSONReport(failingWriter{}, cfg, Summary{}))
+}
+
+type jsonDurationUnmarshalTest struct {
+	Name    string
+	Input   string
+	Want    time.Duration
+	WantErr bool
+}
+
+var jsonDurationUnmarshalTests = []jsonDurationUnmarshalTest{
+	{Name: "seconds", Input: `"5s"`, Want: 5 * time.Second},
+	{Name: "milliseconds", Input: `"300ms"`, Want: 300 * time.Millisecond},
+	{Name: "compound", Input: `"1h30m"`, Want: 90 * time.Minute},
+	{Name: "zero string", Input: `"0s"`, Want: 0},
+	{Name: "empty string is zero", Input: `""`, Want: 0},
+	{Name: "malformed", Input: `"not a duration"`, WantErr: true},
+	{Name: "wrong json type", Input: `123`, WantErr: true},
+}
+
+func TestJSONDuration_Unmarshal(t *testing.T) {
+	for _, tc := range jsonDurationUnmarshalTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			var d jsonDuration
+			err := json.Unmarshal([]byte(tc.Input), &d)
+			if tc.WantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.Want, time.Duration(d))
+		})
+	}
+}
+
+type jsonPayloadShapeUnmarshalTest struct {
+	Name    string
+	Input   string
+	Want    echov1.PayloadShape
+	WantErr bool
+}
+
+var jsonPayloadShapeUnmarshalTests = []jsonPayloadShapeUnmarshalTest{
+	{Name: "kebab string", Input: `"string"`, Want: echov1.PayloadShape_PAYLOAD_SHAPE_STRING},
+	{Name: "kebab bytes", Input: `"bytes"`, Want: echov1.PayloadShape_PAYLOAD_SHAPE_BYTES},
+	{Name: "kebab embedding-float", Input: `"embedding-float"`, Want: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT},
+	{Name: "kebab embedding-bytes", Input: `"embedding-bytes"`, Want: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_BYTES},
+	{Name: "kebab mixed", Input: `"mixed"`, Want: echov1.PayloadShape_PAYLOAD_SHAPE_MIXED},
+	{Name: "proto unspecified fallback", Input: `"PAYLOAD_SHAPE_UNSPECIFIED"`, Want: echov1.PayloadShape_PAYLOAD_SHAPE_UNSPECIFIED},
+	{Name: "proto named fallback", Input: `"PAYLOAD_SHAPE_EMBEDDING_FLOAT"`, Want: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT},
+	{Name: "unknown rejected", Input: `"banana"`, WantErr: true},
+	{Name: "wrong json type", Input: `42`, WantErr: true},
+}
+
+func TestJSONPayloadShape_Unmarshal(t *testing.T) {
+	for _, tc := range jsonPayloadShapeUnmarshalTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			var p jsonPayloadShape
+			err := json.Unmarshal([]byte(tc.Input), &p)
+			if tc.WantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.Want, echov1.PayloadShape(p))
+		})
+	}
+}
+
+// fullReportFixture returns a Config and Summary with every documented
+// field populated. Round-trip and schema-stability tests share the
+// fixture so both exercise the same surface.
+func fullReportFixture() (*Config, Summary) {
+	cfg := &Config{
+		Target:      "127.0.0.1:9999",
+		Plaintext:   true,
+		Concurrency: 4,
+		Duration:    5 * time.Second,
+		Payload: PayloadMix{
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT, Weight: 3},
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_BYTES, Weight: 1},
+		},
+		EmbeddingDim: 1024,
+		BytesSize:    2048,
+		StringLen:    512,
+		Compression:  CompressionGzip,
+		ConnModel:    ConnModelPerWorker,
+		OutputFormat: OutputFormatJSON,
+		Labels: map[string]string{
+			"mesh":    "istio",
+			"payload": "embedding-float",
+			"run":     "a",
+		},
+	}
+	s := Summary{
+		Count:      100,
+		ErrorCount: 2,
+		Elapsed:    5 * time.Second,
+		Throughput: 20,
+		ConnModel:  ConnModelPerWorker,
+		Total: LatencyStats{
+			Count: 98, Min: time.Millisecond, Mean: 4 * time.Millisecond,
+			Stddev: 2 * time.Millisecond, Max: 20 * time.Millisecond,
+			P50: 3 * time.Millisecond, P90: 8 * time.Millisecond, P99: 12 * time.Millisecond,
+		},
+		Server: LatencyStats{
+			Count: 98, Min: 500 * time.Microsecond, Mean: 2 * time.Millisecond,
+			Stddev: time.Millisecond, Max: 10 * time.Millisecond,
+			P50: 2 * time.Millisecond, P90: 5 * time.Millisecond, P99: 8 * time.Millisecond,
+		},
+		Network: LatencyStats{
+			Count: 98, Min: 500 * time.Microsecond, Mean: 2 * time.Millisecond,
+			Stddev: time.Millisecond, Max: 10 * time.Millisecond,
+			P50: time.Millisecond, P90: 3 * time.Millisecond, P99: 4 * time.Millisecond,
+		},
+		Upstream: LatencyStats{
+			Count: 50, Min: time.Millisecond, Mean: 3 * time.Millisecond,
+			Stddev: time.Millisecond, Max: 9 * time.Millisecond,
+			P50: 3 * time.Millisecond, P90: 6 * time.Millisecond, P99: 8 * time.Millisecond,
+		},
+		Backends: []BackendStats{
+			{Key: "pod-a", Source: "pod_name", Count: 60, ErrorCount: 1, PercentOfTotal: 60, P50: 3 * time.Millisecond, P99: 9 * time.Millisecond},
+			{Key: "pod-b", Source: "hostname", Count: 40, ErrorCount: 1, PercentOfTotal: 40, P50: 4 * time.Millisecond, P99: 12 * time.Millisecond},
+		},
+		BackendSkew: BackendSkew{CountRatio: 1.5, P99Ratio: 12.0 / 9.0},
+		Errors: []StatusCodeStats{
+			{
+				Code: codes.InvalidArgument, CodeName: "InvalidArgument", Count: 2,
+				TopMessages: []ErrorMessageStat{
+					{Message: "missing query", Count: 1},
+					{Message: "bad shape", Count: 1},
+				},
+			},
+			{
+				Code: codes.Unavailable, CodeName: "Unavailable", Count: 1,
+				TopMessages: []ErrorMessageStat{
+					{Message: "upstream dropped", Count: 1},
+				},
+			},
+		},
+	}
+	return cfg, s
+}
+
+func TestWriteJSONReport_RoundTrip(t *testing.T) {
+	cfg, s := fullReportFixture()
+
+	var buf bytes.Buffer
+	require.NoError(t, writeJSONReport(&buf, cfg, s))
+
+	var got jsonReport
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+
+	// The wire form is what newJSONReport produces; the round-trip must
+	// reproduce that exact value without losing or transforming any field.
+	want := newJSONReport(cfg, s)
+	require.Equal(t, want, got)
+}
+
+// assertObjectKeys fails the test if `got` is missing any key in
+// `expected` or carries any key not in `expected`. Both kinds of mismatch
+// are reported separately so a schema diff is obvious.
+func assertObjectKeys(t *testing.T, path string, got map[string]any, expected []string) {
+	t.Helper()
+	want := make(map[string]struct{}, len(expected))
+	for _, k := range expected {
+		want[k] = struct{}{}
+	}
+	for k := range want {
+		_, ok := got[k]
+		assert.True(t, ok, "missing key %q at %s", k, path)
+	}
+	for k := range got {
+		_, ok := want[k]
+		assert.True(t, ok, "unexpected key %q at %s", k, path)
+	}
+}
+
+func TestWriteJSONReport_SchemaStability(t *testing.T) {
+	cfg, s := fullReportFixture()
+
+	var buf bytes.Buffer
+	require.NoError(t, writeJSONReport(&buf, cfg, s))
+
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &root))
+
+	assertObjectKeys(t, "$", root, []string{"config", "summary"})
+
+	cfgKeys := []string{
+		"target", "plaintext", "concurrency", "duration", "payload",
+		"embedding_dim", "bytes_size", "string_len", "compression",
+		"conn_model", "labels",
+	}
+	cfgObj := root["config"].(map[string]any)
+	assertObjectKeys(t, "$.config", cfgObj, cfgKeys)
+
+	payload := cfgObj["payload"].([]any)
+	require.NotEmpty(t, payload)
+	for i, entry := range payload {
+		assertObjectKeys(t, fmt.Sprintf("$.config.payload[%d]", i),
+			entry.(map[string]any), []string{"shape", "weight"})
+	}
+
+	sumKeys := []string{
+		"count", "error_count", "elapsed", "throughput_rps", "conn_model",
+		"total", "server", "network", "upstream",
+		"backends", "backend_skew", "errors",
+	}
+	sumObj := root["summary"].(map[string]any)
+	assertObjectKeys(t, "$.summary", sumObj, sumKeys)
+
+	latencyKeys := []string{"count", "min", "mean", "stddev", "max", "p50", "p90", "p99"}
+	for _, name := range []string{"total", "server", "network", "upstream"} {
+		block, ok := sumObj[name].(map[string]any)
+		require.True(t, ok, "summary.%s must be an object", name)
+		assertObjectKeys(t, "$.summary."+name, block, latencyKeys)
+	}
+
+	backendKeys := []string{"key", "source", "count", "error_count", "percent_of_total", "p50", "p99"}
+	backends := sumObj["backends"].([]any)
+	require.NotEmpty(t, backends)
+	for i, b := range backends {
+		assertObjectKeys(t, fmt.Sprintf("$.summary.backends[%d]", i),
+			b.(map[string]any), backendKeys)
+	}
+
+	skew := sumObj["backend_skew"].(map[string]any)
+	assertObjectKeys(t, "$.summary.backend_skew", skew, []string{"count_ratio", "p99_ratio"})
+
+	errs := sumObj["errors"].([]any)
+	require.NotEmpty(t, errs)
+	for i, e := range errs {
+		entry := e.(map[string]any)
+		assertObjectKeys(t, fmt.Sprintf("$.summary.errors[%d]", i),
+			entry, []string{"code", "code_name", "count", "top_messages"})
+		msgs := entry["top_messages"].([]any)
+		require.NotEmpty(t, msgs)
+		for j, m := range msgs {
+			assertObjectKeys(t, fmt.Sprintf("$.summary.errors[%d].top_messages[%d]", i, j),
+				m.(map[string]any), []string{"message", "count"})
+		}
+	}
+}
+
+type labelsPassThroughTest struct {
+	Name   string
+	Labels map[string]string
+	Want   map[string]string
+}
+
+var labelsPassThroughTests = []labelsPassThroughTest{
+	{
+		Name:   "multi-key",
+		Labels: map[string]string{"mesh": "istio", "payload": "embedding-float", "run": "a"},
+		Want:   map[string]string{"mesh": "istio", "payload": "embedding-float", "run": "a"},
+	},
+	{
+		Name:   "special characters in values",
+		Labels: map[string]string{"note": "before=after spaces", "unicode": "naïve résumé", "empty": ""},
+		Want:   map[string]string{"note": "before=after spaces", "unicode": "naïve résumé", "empty": ""},
+	},
+	{
+		Name:   "nil renders empty object",
+		Labels: nil,
+		Want:   map[string]string{},
+	},
+	{
+		Name:   "empty map renders empty object",
+		Labels: map[string]string{},
+		Want:   map[string]string{},
+	},
+}
+
+func TestWriteJSONReport_LabelsPassThrough(t *testing.T) {
+	for _, tc := range labelsPassThroughTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			cfg := &Config{
+				Target:       "127.0.0.1:9999",
+				Concurrency:  1,
+				Duration:     time.Second,
+				Payload:      defaultMix,
+				Compression:  CompressionIdentity,
+				ConnModel:    ConnModelPerWorker,
+				OutputFormat: OutputFormatJSON,
+				Labels:       tc.Labels,
+			}
+
+			var buf bytes.Buffer
+			require.NoError(t, writeJSONReport(&buf, cfg, Summary{}))
+
+			var got jsonReport
+			require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+			assert.Equal(t, tc.Want, got.Config.Labels)
+		})
+	}
 }

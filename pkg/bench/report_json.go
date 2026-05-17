@@ -2,6 +2,7 @@ package bench
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"time"
 
@@ -93,18 +94,39 @@ type jsonErrorMessage struct {
 
 // jsonDuration marshals a Go time.Duration through its String() form so
 // the JSON output reads as "5s" / "3ms" / "500ns" rather than a raw
-// nanosecond count.
+// nanosecond count. UnmarshalJSON inverts the operation through
+// time.ParseDuration, accepting any spelling that ParseDuration accepts;
+// the empty string is treated as zero so JSON null and a literal "" both
+// round-trip cleanly.
 type jsonDuration time.Duration
 
 func (d jsonDuration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(time.Duration(d).String())
 }
 
+func (d *jsonDuration) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return fmt.Errorf("jsonDuration: %w", err)
+	}
+	if s == "" {
+		*d = 0
+		return nil
+	}
+	parsed, err := time.ParseDuration(s)
+	if err != nil {
+		return fmt.Errorf("jsonDuration: parse %q: %w", s, err)
+	}
+	*d = jsonDuration(parsed)
+	return nil
+}
+
 // jsonPayloadShape marshals an echov1.PayloadShape through the kebab-case
 // flag spelling so JSON consumers see the same identifier they would type
 // at --payload. Unknown values fall through to the proto-generated name to
 // keep output non-lossy if a shape is added without updating
-// payloadShapeFlagNames.
+// payloadShapeFlagNames. UnmarshalJSON accepts both spellings so it can
+// invert any string MarshalJSON produces.
 type jsonPayloadShape echov1.PayloadShape
 
 func (p jsonPayloadShape) MarshalJSON() ([]byte, error) {
@@ -112,6 +134,22 @@ func (p jsonPayloadShape) MarshalJSON() ([]byte, error) {
 		return json.Marshal(name)
 	}
 	return json.Marshal(echov1.PayloadShape(p).String())
+}
+
+func (p *jsonPayloadShape) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return fmt.Errorf("jsonPayloadShape: %w", err)
+	}
+	if shape, ok := payloadShapeNames[s]; ok {
+		*p = jsonPayloadShape(shape)
+		return nil
+	}
+	if shape, ok := echov1.PayloadShape_value[s]; ok {
+		*p = jsonPayloadShape(echov1.PayloadShape(shape))
+		return nil
+	}
+	return fmt.Errorf("jsonPayloadShape: unknown shape %q", s)
 }
 
 func newJSONReport(c *Config, s Summary) jsonReport {
