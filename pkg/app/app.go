@@ -53,8 +53,18 @@ func NewRootCommand() *cobra.Command {
 func newBenchCommand() *cobra.Command {
 	b := bench.New()
 	cmd := &cobra.Command{
-		Use:     "bench",
-		Short:   "Benchmark a gRPC echo server",
+		Use:   "bench",
+		Short: "Benchmark a gRPC echo server",
+		Long: `Drive load against a gRPC echo server with configurable payload shape,
+compression, and connection model.
+
+Conn-model semantics differ depending on whether a service mesh is in the
+path. Without a mesh, kube-proxy load-balances per connection (L4), so
+"shared" pins every worker to one backend while "per-worker" gives N
+connections through the LB. With a mesh, the sidecar load-balances per
+request (L7), so "shared" still spreads work across backends. "per-request"
+forces a fresh TCP+TLS+HTTP/2 handshake on every call regardless of mesh,
+which is the way to surface connection-establishment cost.`,
 		Example: "netdebug bench --target=127.0.0.1:8080 --payload=embedding-float --embedding-dim=1024 --concurrency=4 --duration=10s",
 		RunE:    runAdapter(b.Run),
 	}
@@ -68,6 +78,7 @@ func newBenchCommand() *cobra.Command {
 	cmd.Flags().IntVar(&b.BytesSize, "bytes-size", b.BytesSize, "Size in bytes for the bytes payload shape")
 	cmd.Flags().IntVar(&b.StringLen, "string-len", b.StringLen, "Length in characters for the string payload shape")
 	cmd.Flags().StringVar(&b.Compression, "compression", b.Compression, "Compression codec: identity, gzip, snappy, zstd")
+	cmd.Flags().StringVar(&b.ConnModel, "conn-model", b.ConnModel, "Connection model: per-worker, shared, per-request")
 
 	return cmd
 }

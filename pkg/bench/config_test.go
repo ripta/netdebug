@@ -24,6 +24,7 @@ func TestNew_Defaults(t *testing.T) {
 	assert.Equal(t, 1024, c.BytesSize)
 	assert.Equal(t, 1024, c.StringLen)
 	assert.Equal(t, CompressionIdentity, c.Compression)
+	assert.Equal(t, ConnModelPerWorker, c.ConnModel)
 	assert.NotNil(t, c.Output)
 }
 
@@ -50,7 +51,7 @@ var configValidateTests = []configValidateTest{
 		Config: Config{
 			Target: "127.0.0.1:8080", Plaintext: true, Concurrency: 1, Duration: 10 * time.Second,
 			Payload: defaultMix, EmbeddingDim: 1024, BytesSize: 1024, StringLen: 1024,
-			Compression: CompressionIdentity,
+			Compression: CompressionIdentity, ConnModel: ConnModelPerWorker,
 		},
 		WantErr: false,
 	},
@@ -142,7 +143,7 @@ var configValidateTests = []configValidateTest{
 		Config: Config{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
 			Payload: defaultMix, EmbeddingDim: 0, BytesSize: 0, StringLen: 0,
-			Compression: CompressionIdentity,
+			Compression: CompressionIdentity, ConnModel: ConnModelPerWorker,
 		},
 		WantErr: false,
 	},
@@ -150,7 +151,7 @@ var configValidateTests = []configValidateTest{
 		Name: "gzip compression is accepted",
 		Config: Config{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
-			Payload: defaultMix, Compression: CompressionGzip,
+			Payload: defaultMix, Compression: CompressionGzip, ConnModel: ConnModelPerWorker,
 		},
 		WantErr: false,
 	},
@@ -158,7 +159,7 @@ var configValidateTests = []configValidateTest{
 		Name: "empty compression is rejected",
 		Config: Config{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
-			Payload: defaultMix, Compression: "",
+			Payload: defaultMix, Compression: "", ConnModel: ConnModelPerWorker,
 		},
 		WantErr: true,
 	},
@@ -166,7 +167,39 @@ var configValidateTests = []configValidateTest{
 		Name: "unknown compression is rejected",
 		Config: Config{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
-			Payload: defaultMix, Compression: "lz4",
+			Payload: defaultMix, Compression: "lz4", ConnModel: ConnModelPerWorker,
+		},
+		WantErr: true,
+	},
+	{
+		Name: "shared conn-model is accepted",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelShared,
+		},
+		WantErr: false,
+	},
+	{
+		Name: "per-request conn-model is accepted",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerRequest,
+		},
+		WantErr: false,
+	},
+	{
+		Name: "empty conn-model is rejected",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: "",
+		},
+		WantErr: true,
+	},
+	{
+		Name: "unknown conn-model is rejected",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: "round-robin",
 		},
 		WantErr: true,
 	},

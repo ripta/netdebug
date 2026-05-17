@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"k8s.io/klog/v2"
 
 	echov1 "github.com/ripta/netdebug/pkg/echo/v1"
 )
@@ -25,6 +26,7 @@ type Config struct {
 	BytesSize    int
 	StringLen    int
 	Compression  string
+	ConnModel    string
 	Output       io.Writer
 
 	dialOpts []grpc.DialOption
@@ -43,6 +45,7 @@ func New() *Config {
 		BytesSize:    1024,
 		StringLen:    1024,
 		Compression:  CompressionIdentity,
+		ConnModel:    ConnModelPerWorker,
 		Output:       os.Stdout,
 	}
 }
@@ -82,6 +85,9 @@ func (c *Config) Validate() error {
 	if !isValidCompression(c.Compression) {
 		return fmt.Errorf("compression %q is not one of identity, gzip, snappy, zstd", c.Compression)
 	}
+	if !isValidConnModel(c.ConnModel) {
+		return fmt.Errorf("conn-model %q is not one of per-worker, shared, per-request", c.ConnModel)
+	}
 	return nil
 }
 
@@ -98,6 +104,18 @@ func (c *Config) run(ctx context.Context) (Summary, error) {
 		return Summary{}, err
 	}
 
+	pool, err := newConnPool(c.ConnModel, func() (*grpc.ClientConn, error) {
+		return dial(c.Target, c.Plaintext, c.dialOpts)
+	})
+	if err != nil {
+		return Summary{}, fmt.Errorf("creating conn pool: %w", err)
+	}
+	defer func() {
+		if cerr := pool.Close(); cerr != nil {
+			klog.ErrorS(cerr, "closing bench conn pool", "target", c.Target)
+		}
+	}()
+
 	runCtx, cancel := context.WithTimeout(ctx, c.Duration)
 	defer cancel()
 
@@ -111,9 +129,7 @@ func (c *Config) run(ctx context.Context) (Summary, error) {
 	workers := make([]*worker, c.Concurrency)
 	for i := range workers {
 		workers[i] = &worker{
-			target:      c.Target,
-			plaintext:   c.Plaintext,
-			dialOpts:    c.dialOpts,
+			pool:        pool,
 			compression: c.Compression,
 			selector:    selector,
 			sizes:       sizes,
@@ -140,7 +156,7 @@ func (c *Config) run(ctx context.Context) (Summary, error) {
 		results = append(results, w.results...)
 	}
 
-	return summarize(results, elapsed(results)), nil
+	return summarize(results, elapsed(results), c.ConnModel), nil
 }
 
 func (c *Config) output() io.Writer {

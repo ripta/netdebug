@@ -2,7 +2,6 @@ package bench
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -10,8 +9,6 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 
@@ -19,9 +16,7 @@ import (
 )
 
 type worker struct {
-	target      string
-	plaintext   bool
-	dialOpts    []grpc.DialOption
+	pool        ConnPool
 	compression string
 	selector    *PayloadSelector
 	sizes       PayloadSizes
@@ -30,51 +25,68 @@ type worker struct {
 }
 
 func (w *worker) run(ctx context.Context) {
-	conn, err := dial(w.target, w.plaintext, w.dialOpts)
+	src, err := w.pool.NewSource()
 	if err != nil {
 		now := time.Now()
 		w.results = append(w.results, Result{
 			Start: now,
 			End:   now,
-			Err:   fmt.Errorf("dialing %s: %w", w.target, err),
+			Err:   fmt.Errorf("opening conn source: %w", err),
 		})
 		return
 	}
 	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			klog.ErrorS(cerr, "closing bench client conn", "target", w.target)
+		if cerr := src.Close(); cerr != nil {
+			klog.ErrorS(cerr, "closing bench conn source")
 		}
 	}()
 
-	client := echov1.NewEchoerClient(conn)
-
 	for ctx.Err() == nil {
-		req := BuildEchoRequest(w.selector.Pick(w.rng), w.sizes)
-		bag := &wireBytes{}
-		callCtx := contextWithWireBytes(ctx, bag)
-		start := time.Now()
-		rsp, err := client.Echo(callCtx, req, grpc.UseCompressor(w.compression))
-		end := time.Now()
-
-		if err != nil && (ctx.Err() != nil || isCancellation(err)) {
-			return
+		conn, release, err := src.Acquire(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			now := time.Now()
+			w.results = append(w.results, Result{
+				Start: now,
+				End:   now,
+				Err:   fmt.Errorf("acquiring conn: %w", err),
+			})
+			continue
 		}
-
-		r := Result{
-			Start:                     start,
-			End:                       end,
-			TotalDuration:             end.Sub(start),
-			BytesSentUncompressed:     bag.SentUncompressed.Load(),
-			BytesSentWire:             bag.SentWire.Load(),
-			BytesReceivedUncompressed: bag.ReceivedUncompressed.Load(),
-			BytesReceivedWire:         bag.ReceivedWire.Load(),
-			Err:                       err,
-		}
-		if err == nil && rsp != nil {
-			r.ServerDurationNs = rsp.ServerDurationNs
-		}
-		w.results = append(w.results, r)
+		w.doCall(ctx, conn)
+		release()
 	}
+}
+
+func (w *worker) doCall(ctx context.Context, conn *grpc.ClientConn) {
+	client := echov1.NewEchoerClient(conn)
+	req := BuildEchoRequest(w.selector.Pick(w.rng), w.sizes)
+	bag := &wireBytes{}
+	callCtx := contextWithWireBytes(ctx, bag)
+	start := time.Now()
+	rsp, err := client.Echo(callCtx, req, grpc.UseCompressor(w.compression))
+	end := time.Now()
+
+	if err != nil && (ctx.Err() != nil || isCancellation(err)) {
+		return
+	}
+
+	r := Result{
+		Start:                     start,
+		End:                       end,
+		TotalDuration:             end.Sub(start),
+		BytesSentUncompressed:     bag.SentUncompressed.Load(),
+		BytesSentWire:             bag.SentWire.Load(),
+		BytesReceivedUncompressed: bag.ReceivedUncompressed.Load(),
+		BytesReceivedWire:         bag.ReceivedWire.Load(),
+		Err:                       err,
+	}
+	if err == nil && rsp != nil {
+		r.ServerDurationNs = rsp.ServerDurationNs
+	}
+	w.results = append(w.results, r)
 }
 
 // isCancellation reports whether an Echo error is a deadline or cancellation
@@ -88,18 +100,4 @@ func isCancellation(err error) bool {
 	}
 	code := status.Code(err)
 	return code == codes.Canceled || code == codes.DeadlineExceeded
-}
-
-func dial(target string, plaintext bool, extra []grpc.DialOption) (*grpc.ClientConn, error) {
-	var creds credentials.TransportCredentials
-	if plaintext {
-		creds = insecure.NewCredentials()
-	} else {
-		creds = credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})
-	}
-	opts := append([]grpc.DialOption{
-		grpc.WithTransportCredentials(creds),
-		grpc.WithStatsHandler(wireLengthStatsHandler{}),
-	}, extra...)
-	return grpc.NewClient(target, opts...)
 }

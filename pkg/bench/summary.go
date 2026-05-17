@@ -13,12 +13,14 @@ type Summary struct {
 	Throughput float64
 	LatencyP50 time.Duration
 	LatencyP99 time.Duration
+	ConnModel  string
 }
 
-func summarize(results []Result, elapsed time.Duration) Summary {
+func summarize(results []Result, elapsed time.Duration, connModel string) Summary {
 	s := Summary{
-		Count:   len(results),
-		Elapsed: elapsed,
+		Count:     len(results),
+		Elapsed:   elapsed,
+		ConnModel: connModel,
 	}
 
 	successes := make([]time.Duration, 0, len(results))

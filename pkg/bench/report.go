@@ -12,6 +12,7 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 		"Target:      %s\n"+
 			"Concurrency: %d\n"+
 			"Duration:    %s\n"+
+			"Conn model:  %s\n"+
 			"\n"+
 			"Requests:    %d\n"+
 			"Errors:      %d\n"+
@@ -22,6 +23,7 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 		c.Target,
 		c.Concurrency,
 		c.Duration,
+		s.ConnModel,
 		s.Count,
 		s.ErrorCount,
 		s.Elapsed,

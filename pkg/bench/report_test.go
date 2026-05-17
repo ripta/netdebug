@@ -23,6 +23,7 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 		Throughput: 20,
 		LatencyP50: 3 * time.Millisecond,
 		LatencyP99: 12 * time.Millisecond,
+		ConnModel:  ConnModelPerWorker,
 	}
 
 	var buf bytes.Buffer
@@ -33,6 +34,7 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 		"Target:      127.0.0.1:9999",
 		"Concurrency: 4",
 		"Duration:    5s",
+		"Conn model:  per-worker",
 		"Requests:    100",
 		"Errors:      2",
 		"Elapsed:     5s",

@@ -52,6 +52,7 @@ func TestRun_BufconnSmoke(t *testing.T) {
 		Duration:    200 * time.Millisecond,
 		Payload:     defaultMix,
 		Compression: CompressionIdentity,
+		ConnModel:   ConnModelPerWorker,
 		Output:      &buf,
 		dialOpts:    bufconnDialOpts(lis),
 	}
@@ -67,6 +68,7 @@ func TestRun_BufconnSmoke(t *testing.T) {
 		"Target:      passthrough://bufnet",
 		"Concurrency: 2",
 		"Duration:    200ms",
+		"Conn model:  per-worker",
 		"Requests:",
 		"Errors:      0",
 		"Throughput:",
@@ -87,6 +89,7 @@ func TestRun_BufconnPopulatesSummary(t *testing.T) {
 		Duration:    200 * time.Millisecond,
 		Payload:     defaultMix,
 		Compression: CompressionIdentity,
+		ConnModel:   ConnModelPerWorker,
 		Output:      io.Discard,
 		dialOpts:    bufconnDialOpts(lis),
 	}
@@ -99,4 +102,5 @@ func TestRun_BufconnPopulatesSummary(t *testing.T) {
 	assert.Greater(t, s.LatencyP50, time.Duration(0))
 	assert.Greater(t, s.LatencyP99, time.Duration(0))
 	assert.Greater(t, s.Throughput, 0.0)
+	assert.Equal(t, ConnModelPerWorker, s.ConnModel)
 }

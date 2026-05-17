@@ -97,13 +97,14 @@ var summarizeTests = []summarizeTest{
 func TestSummarize(t *testing.T) {
 	for _, tc := range summarizeTests {
 		t.Run(tc.Name, func(t *testing.T) {
-			s := summarize(tc.Results, tc.Elapsed)
+			s := summarize(tc.Results, tc.Elapsed, ConnModelPerWorker)
 			assert.Equal(t, tc.WantCount, s.Count, "Count")
 			assert.Equal(t, tc.WantErrors, s.ErrorCount, "ErrorCount")
 			assert.Equal(t, tc.WantP50, s.LatencyP50, "LatencyP50")
 			assert.Equal(t, tc.WantP99, s.LatencyP99, "LatencyP99")
 			assert.InDelta(t, tc.WantThrPS, s.Throughput, 1e-9, "Throughput")
 			assert.Equal(t, tc.Elapsed, s.Elapsed, "Elapsed")
+			assert.Equal(t, ConnModelPerWorker, s.ConnModel, "ConnModel")
 		})
 	}
 }
