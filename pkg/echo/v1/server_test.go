@@ -73,6 +73,40 @@ func TestEcho_ReflectsRequest(t *testing.T) {
 	assert.Equal(t, res.Request.Headers, flatten(rsp.Request.Header))
 }
 
+func TestEcho_PopulatesKubernetes(t *testing.T) {
+	res := result.Result{
+		Kubernetes: result.KubernetesResult{
+			Hostname:     "node-42.local",
+			PodName:      "echo-7d9c-abc",
+			PodNamespace: "default",
+			PodNode:      "node-42",
+		},
+	}
+	ctx := result.WithResult(context.Background(), res)
+
+	rsp, err := (&Server{}).Echo(ctx, &EchoRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, rsp)
+	require.NotNil(t, rsp.Kubernetes)
+
+	assert.Equal(t, res.Kubernetes.Hostname, rsp.Kubernetes.Hostname)
+	assert.Equal(t, res.Kubernetes.PodName, rsp.Kubernetes.PodName)
+	assert.Equal(t, res.Kubernetes.PodNamespace, rsp.Kubernetes.PodNamespace)
+	assert.Equal(t, res.Kubernetes.PodNode, rsp.Kubernetes.PodNode)
+}
+
+func TestEcho_KubernetesEmptyByDefault(t *testing.T) {
+	rsp, err := (&Server{}).Echo(context.Background(), &EchoRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, rsp)
+	require.NotNil(t, rsp.Kubernetes)
+
+	assert.Empty(t, rsp.Kubernetes.Hostname)
+	assert.Empty(t, rsp.Kubernetes.PodName)
+	assert.Empty(t, rsp.Kubernetes.PodNamespace)
+	assert.Empty(t, rsp.Kubernetes.PodNode)
+}
+
 func TestEcho_FlattensExtensions(t *testing.T) {
 	res := result.Result{
 		Extensions: []result.ExtensionResult{

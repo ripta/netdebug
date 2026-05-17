@@ -3,6 +3,7 @@ package bench
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 func writeReport(w io.Writer, c *Config, s Summary) error {
@@ -19,6 +20,7 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 			"\n"+
 			"%s\n"+
 			"%s\n"+
+			"%s\n"+
 			"%s",
 		c.Target,
 		c.Concurrency,
@@ -31,8 +33,29 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 		latencyStatsBlock("total", s.Total),
 		latencyStatsBlock("server", s.Server),
 		latencyStatsBlock("network", s.Network),
+		backendsBlock(s.Backends),
 	)
 	return err
+}
+
+func backendsBlock(backends []BackendStats) string {
+	if len(backends) == 0 {
+		return "Backends: n/a"
+	}
+	var sb strings.Builder
+	sb.WriteString("Backends:\n")
+	for i, b := range backends {
+		key := b.Key
+		if key == "" {
+			key = "(unknown)"
+		}
+		fmt.Fprintf(&sb, "  %s=%s (%d req, %.1f%%): p50=%s p99=%s errors=%d",
+			b.Source, key, b.Count, b.PercentOfTotal, b.P50, b.P99, b.ErrorCount)
+		if i < len(backends)-1 {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
 }
 
 func latencyStatsBlock(name string, stats LatencyStats) string {

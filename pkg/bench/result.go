@@ -11,5 +11,8 @@ type Result struct {
 	BytesSentWire             int64
 	BytesReceivedUncompressed int64
 	BytesReceivedWire         int64
+	PodName                   string
+	PodHostname               string
+	PeerAddr                  string
 	Err                       error
 }

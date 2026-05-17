@@ -110,4 +110,17 @@ func TestRun_BufconnPopulatesSummary(t *testing.T) {
 	assert.Equal(t, s.Count, s.Network.Count)
 	assert.Greater(t, s.Throughput, 0.0)
 	assert.Equal(t, ConnModelPerWorker, s.ConnModel)
+
+	// The bufconn echo server runs without an HTTP wrapper, so no
+	// KubernetesInfo is attached to the context and rsp.Kubernetes comes
+	// back zero-valued. Per-backend grouping must still fire via the peer
+	// fallback for every recorded request.
+	require.NotEmpty(t, s.Backends)
+	var totalBackendCount int
+	for _, b := range s.Backends {
+		assert.Equal(t, "peer", b.Source, "backend %q should fall through to peer", b.Key)
+		assert.NotEmpty(t, b.Key, "peer-sourced backend must carry an address")
+		totalBackendCount += b.Count
+	}
+	assert.Equal(t, s.Count, totalBackendCount, "every recorded request appears in exactly one bucket")
 }

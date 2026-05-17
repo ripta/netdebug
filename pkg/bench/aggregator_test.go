@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func ms(n int) time.Duration { return time.Duration(n) * time.Millisecond }
@@ -249,6 +250,186 @@ func TestPercentile(t *testing.T) {
 	for _, tc := range percentileTests {
 		t.Run(tc.Name, func(t *testing.T) {
 			assert.Equal(t, tc.Want, percentile(tc.Sorted, tc.P))
+		})
+	}
+}
+
+type backendBucket struct {
+	Key            string
+	Source         string
+	Count          int
+	ErrorCount     int
+	PercentOfTotal float64
+	P50            time.Duration
+	P99            time.Duration
+}
+
+type aggregateBackendsTest struct {
+	Name    string
+	Results []Result
+	Want    []backendBucket
+}
+
+var aggregateBackendsTests = []aggregateBackendsTest{
+	{
+		Name:    "empty input produces no backends",
+		Results: nil,
+		Want:    nil,
+	},
+	{
+		Name: "pod_name groups together",
+		Results: []Result{
+			{TotalDuration: ms(2), PodName: "pod-a"},
+			{TotalDuration: ms(4), PodName: "pod-a"},
+			{TotalDuration: ms(6), PodName: "pod-a"},
+		},
+		Want: []backendBucket{
+			{Key: "pod-a", Source: "pod_name", Count: 3, PercentOfTotal: 100, P50: ms(4), P99: ms(6)},
+		},
+	},
+	{
+		Name: "hostname fallback when pod_name absent",
+		Results: []Result{
+			{TotalDuration: ms(3), PodHostname: "host-b", PeerAddr: "ignored"},
+			{TotalDuration: ms(5), PodHostname: "host-b", PeerAddr: "ignored"},
+		},
+		Want: []backendBucket{
+			{Key: "host-b", Source: "hostname", Count: 2, PercentOfTotal: 100, P50: ms(3), P99: ms(5)},
+		},
+	},
+	{
+		Name: "peer fallback when both kubernetes fields absent",
+		Results: []Result{
+			{TotalDuration: ms(7), PeerAddr: "10.0.0.1:50051"},
+		},
+		Want: []backendBucket{
+			{Key: "10.0.0.1:50051", Source: "peer", Count: 1, PercentOfTotal: 100, P50: ms(7), P99: ms(7)},
+		},
+	},
+	{
+		// Each result carries a different fallback source; grouping must
+		// not collapse them by accident even though every entry holds
+		// "10.0.0.1:50051" as PeerAddr.
+		Name: "mixed fallback sources group separately",
+		Results: []Result{
+			{TotalDuration: ms(1), PodName: "pod-a", PeerAddr: "10.0.0.1:50051"},
+			{TotalDuration: ms(2), PodHostname: "host-b", PeerAddr: "10.0.0.1:50051"},
+			{TotalDuration: ms(3), PeerAddr: "10.0.0.1:50051"},
+		},
+		Want: []backendBucket{
+			{Key: "10.0.0.1:50051", Source: "peer", Count: 1, PercentOfTotal: 100.0 / 3.0, P50: ms(3), P99: ms(3)},
+			{Key: "host-b", Source: "hostname", Count: 1, PercentOfTotal: 100.0 / 3.0, P50: ms(2), P99: ms(2)},
+			{Key: "pod-a", Source: "pod_name", Count: 1, PercentOfTotal: 100.0 / 3.0, P50: ms(1), P99: ms(1)},
+		},
+	},
+	{
+		Name: "errors counted per backend without dragging percentiles",
+		Results: []Result{
+			{TotalDuration: ms(4), PodName: "pod-a"},
+			{Err: errors.New("boom"), PodName: "pod-a"},
+			{TotalDuration: ms(8), PodName: "pod-b"},
+			{Err: errors.New("boom"), PodName: "pod-b"},
+			{Err: errors.New("boom"), PodName: "pod-b"},
+		},
+		Want: []backendBucket{
+			{Key: "pod-b", Source: "pod_name", Count: 3, ErrorCount: 2, PercentOfTotal: 60, P50: ms(8), P99: ms(8)},
+			{Key: "pod-a", Source: "pod_name", Count: 2, ErrorCount: 1, PercentOfTotal: 40, P50: ms(4), P99: ms(4)},
+		},
+	},
+	{
+		Name: "errors-only group reports zero percentiles",
+		Results: []Result{
+			{Err: errors.New("boom"), PeerAddr: "10.0.0.1:50051"},
+			{Err: errors.New("boom"), PeerAddr: "10.0.0.1:50051"},
+		},
+		Want: []backendBucket{
+			{Key: "10.0.0.1:50051", Source: "peer", Count: 2, ErrorCount: 2, PercentOfTotal: 100, P50: 0, P99: 0},
+		},
+	},
+	{
+		Name: "results with no identifier collapse into unknown",
+		Results: []Result{
+			{TotalDuration: ms(1)},
+			{TotalDuration: ms(3)},
+		},
+		Want: []backendBucket{
+			{Key: "", Source: "unknown", Count: 2, PercentOfTotal: 100, P50: ms(1), P99: ms(3)},
+		},
+	},
+	{
+		// Sort tie-breaker: identical counts sort by Key asc. pod-a and
+		// pod-b both carry one request; pod-a must come first.
+		Name: "tied counts sort by key ascending",
+		Results: []Result{
+			{TotalDuration: ms(2), PodName: "pod-b"},
+			{TotalDuration: ms(1), PodName: "pod-a"},
+		},
+		Want: []backendBucket{
+			{Key: "pod-a", Source: "pod_name", Count: 1, PercentOfTotal: 50, P50: ms(1), P99: ms(1)},
+			{Key: "pod-b", Source: "pod_name", Count: 1, PercentOfTotal: 50, P50: ms(2), P99: ms(2)},
+		},
+	},
+}
+
+func TestAggregate_Backends(t *testing.T) {
+	for _, tc := range aggregateBackendsTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			s := aggregate(tc.Results, time.Second, ConnModelPerWorker)
+			require.Len(t, s.Backends, len(tc.Want))
+			for i, want := range tc.Want {
+				got := s.Backends[i]
+				assert.Equal(t, want.Key, got.Key, "Backends[%d].Key", i)
+				assert.Equal(t, want.Source, got.Source, "Backends[%d].Source", i)
+				assert.Equal(t, want.Count, got.Count, "Backends[%d].Count", i)
+				assert.Equal(t, want.ErrorCount, got.ErrorCount, "Backends[%d].ErrorCount", i)
+				assert.InDelta(t, want.PercentOfTotal, got.PercentOfTotal, 1e-9, "Backends[%d].PercentOfTotal", i)
+				assert.Equal(t, want.P50, got.P50, "Backends[%d].P50", i)
+				assert.Equal(t, want.P99, got.P99, "Backends[%d].P99", i)
+			}
+		})
+	}
+}
+
+type backendKeyTest struct {
+	Name       string
+	Result     Result
+	WantKey    string
+	WantSource string
+}
+
+var backendKeyTests = []backendKeyTest{
+	{
+		Name:       "pod_name wins over hostname and peer",
+		Result:     Result{PodName: "echo-abc", PodHostname: "h", PeerAddr: "10.0.0.1:1"},
+		WantKey:    "echo-abc",
+		WantSource: "pod_name",
+	},
+	{
+		Name:       "hostname used when pod_name empty",
+		Result:     Result{PodHostname: "h", PeerAddr: "10.0.0.1:1"},
+		WantKey:    "h",
+		WantSource: "hostname",
+	},
+	{
+		Name:       "peer used when both kubernetes fields empty",
+		Result:     Result{PeerAddr: "10.0.0.1:1"},
+		WantKey:    "10.0.0.1:1",
+		WantSource: "peer",
+	},
+	{
+		Name:       "all empty falls into unknown bucket",
+		Result:     Result{},
+		WantKey:    "",
+		WantSource: "unknown",
+	},
+}
+
+func TestBackendKey(t *testing.T) {
+	for _, tc := range backendKeyTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			k, src := backendKey(tc.Result)
+			assert.Equal(t, tc.WantKey, k, "key")
+			assert.Equal(t, tc.WantSource, src, "source")
 		})
 	}
 }

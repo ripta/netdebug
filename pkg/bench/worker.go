@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 
@@ -65,8 +66,9 @@ func (w *worker) doCall(ctx context.Context, conn *grpc.ClientConn) {
 	req := BuildEchoRequest(w.selector.Pick(w.rng), w.sizes)
 	bag := &wireBytes{}
 	callCtx := contextWithWireBytes(ctx, bag)
+	var peerInfo peer.Peer
 	start := time.Now()
-	rsp, err := client.Echo(callCtx, req, grpc.UseCompressor(w.compression))
+	rsp, err := client.Echo(callCtx, req, grpc.UseCompressor(w.compression), grpc.Peer(&peerInfo))
 	end := time.Now()
 
 	if err != nil && (ctx.Err() != nil || isCancellation(err)) {
@@ -83,8 +85,15 @@ func (w *worker) doCall(ctx context.Context, conn *grpc.ClientConn) {
 		BytesReceivedWire:         bag.ReceivedWire.Load(),
 		Err:                       err,
 	}
+	if peerInfo.Addr != nil {
+		r.PeerAddr = peerInfo.Addr.String()
+	}
 	if err == nil && rsp != nil {
 		r.ServerDurationNs = rsp.ServerDurationNs
+		if rsp.Kubernetes != nil {
+			r.PodName = rsp.Kubernetes.PodName
+			r.PodHostname = rsp.Kubernetes.Hostname
+		}
 	}
 	w.results = append(w.results, r)
 }

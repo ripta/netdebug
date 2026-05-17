@@ -24,6 +24,12 @@ func (s *Server) Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, err
 		Query:   req.Query,
 		Shape:   req.Shape,
 		Payload: echoRequestPayload(req.Payload),
+		Kubernetes: &KubernetesInfo{
+			Hostname:     res.Kubernetes.Hostname,
+			PodName:      res.Kubernetes.PodName,
+			PodNamespace: res.Kubernetes.PodNamespace,
+			PodNode:      res.Kubernetes.PodNode,
+		},
 		Request: &RequestInfo{
 			Protocol:   res.Request.Protocol,
 			RemoteAddr: res.Request.RemoteAddr,

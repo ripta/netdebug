@@ -37,6 +37,10 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 			Stddev: time.Millisecond, Max: 10 * time.Millisecond,
 			P50: time.Millisecond, P90: 3 * time.Millisecond, P99: 4 * time.Millisecond,
 		},
+		Backends: []BackendStats{
+			{Key: "pod-a", Source: "pod_name", Count: 60, PercentOfTotal: 60, P50: 3 * time.Millisecond, P99: 9 * time.Millisecond, ErrorCount: 1},
+			{Key: "pod-b", Source: "pod_name", Count: 40, PercentOfTotal: 40, P50: 4 * time.Millisecond, P99: 12 * time.Millisecond, ErrorCount: 1},
+		},
 	}
 
 	var buf bytes.Buffer
@@ -63,6 +67,9 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 		"p90:    8ms",
 		"p99:    12ms",
 		"max:    20ms",
+		"Backends:",
+		"pod_name=pod-a (60 req, 60.0%): p50=3ms p99=9ms errors=1",
+		"pod_name=pod-b (40 req, 40.0%): p50=4ms p99=12ms errors=1",
 	} {
 		assert.Contains(t, out, want)
 	}
@@ -79,6 +86,7 @@ func TestWriteReport_NoSuccessesRendersNA(t *testing.T) {
 	assert.Contains(t, out, "Latency (total): n/a")
 	assert.Contains(t, out, "Latency (server): n/a")
 	assert.Contains(t, out, "Latency (network): n/a")
+	assert.Contains(t, out, "Backends: n/a")
 	assert.Contains(t, out, "Errors:      3")
 }
 
