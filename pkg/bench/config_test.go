@@ -26,6 +26,8 @@ func TestNew_Defaults(t *testing.T) {
 	assert.Equal(t, CompressionIdentity, c.Compression)
 	assert.Equal(t, ConnModelPerWorker, c.ConnModel)
 	assert.Equal(t, OutputFormatHuman, c.OutputFormat)
+	assert.NotNil(t, c.Labels)
+	assert.Empty(t, c.Labels)
 	assert.NotNil(t, c.Output)
 }
 
@@ -225,6 +227,33 @@ var configValidateTests = []configValidateTest{
 		Config: Config{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
 			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: "round-robin",
+		},
+		WantErr: true,
+	},
+	{
+		Name: "populated labels are accepted",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatHuman,
+			Labels: map[string]string{"mesh": "istio", "payload": "embedding-float"},
+		},
+		WantErr: false,
+	},
+	{
+		Name: "empty label value is accepted",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatHuman,
+			Labels: map[string]string{"mesh": ""},
+		},
+		WantErr: false,
+	},
+	{
+		Name: "empty label key is rejected",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatHuman,
+			Labels: map[string]string{"": "istio"},
 		},
 		WantErr: true,
 	},

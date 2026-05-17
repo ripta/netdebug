@@ -3,6 +3,7 @@ package bench
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -12,6 +13,7 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 			"Concurrency: %d\n"+
 			"Duration:    %s\n"+
 			"Conn model:  %s\n"+
+			"%s"+
 			"\n"+
 			"Requests:    %d\n"+
 			"Errors:      %d\n"+
@@ -29,6 +31,7 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 		c.Concurrency,
 		c.Duration,
 		s.ConnModel,
+		labelsHeader(c.Labels),
 		s.Count,
 		s.ErrorCount,
 		s.Elapsed,
@@ -42,6 +45,26 @@ func writeReport(w io.Writer, c *Config, s Summary) error {
 		statusCodeBlock(s.Errors),
 	)
 	return err
+}
+
+// labelsHeader renders the optional Labels line for the human report. The
+// trailing newline is part of the returned string so the header block stays
+// one fmt.Fprintf, with the line collapsing away to nothing when no labels
+// are set.
+func labelsHeader(labels map[string]string) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = fmt.Sprintf("%s=%s", k, labels[k])
+	}
+	return fmt.Sprintf("Labels:      %s\n", strings.Join(parts, " "))
 }
 
 // statusCodeBlock renders the per-status-code error breakdown. Each line

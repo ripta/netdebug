@@ -80,6 +80,7 @@ which is the way to surface connection-establishment cost.`,
 	cmd.Flags().StringVar(&b.Compression, "compression", b.Compression, "Compression codec: identity, gzip, snappy, zstd")
 	cmd.Flags().StringVar(&b.ConnModel, "conn-model", b.ConnModel, "Connection model: per-worker, shared, per-request")
 	cmd.Flags().StringVar(&b.OutputFormat, "output", b.OutputFormat, "Output format: human, json")
+	cmd.Flags().StringToStringVar(&b.Labels, "label", b.Labels, "Repeatable label (key=value) included verbatim in the JSON summary and the human header")
 
 	return cmd
 }

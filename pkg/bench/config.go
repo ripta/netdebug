@@ -36,6 +36,7 @@ type Config struct {
 	Compression  string
 	ConnModel    string
 	OutputFormat string
+	Labels       map[string]string
 	Output       io.Writer
 
 	dialOpts []grpc.DialOption
@@ -56,6 +57,7 @@ func New() *Config {
 		Compression:  CompressionIdentity,
 		ConnModel:    ConnModelPerWorker,
 		OutputFormat: OutputFormatHuman,
+		Labels:       map[string]string{},
 		Output:       os.Stdout,
 	}
 }
@@ -108,6 +110,11 @@ func (c *Config) Validate() error {
 	}
 	if !isValidOutputFormat(c.OutputFormat) {
 		return fmt.Errorf("output %q is not one of human, json", c.OutputFormat)
+	}
+	for k := range c.Labels {
+		if k == "" {
+			return errors.New("label keys must not be empty")
+		}
 	}
 	return nil
 }

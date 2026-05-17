@@ -19,6 +19,7 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 		Target:      "127.0.0.1:9999",
 		Concurrency: 4,
 		Duration:    5 * time.Second,
+		Labels:      map[string]string{"mesh": "istio", "payload": "embedding-float"},
 	}
 	s := Summary{
 		Count:      100,
@@ -71,6 +72,7 @@ func TestWriteReport_PopulatedSummary(t *testing.T) {
 		"Concurrency: 4",
 		"Duration:    5s",
 		"Conn model:  per-worker",
+		"Labels:      mesh=istio payload=embedding-float",
 		"Requests:    100",
 		"Errors:      2",
 		"Elapsed:     5s",
@@ -107,6 +109,7 @@ func TestWriteReport_NoSuccessesRendersNA(t *testing.T) {
 	require.NoError(t, writeReport(&buf, cfg, s))
 
 	out := buf.String()
+	assert.NotContains(t, out, "Labels:", "header should omit the labels line when no labels are set")
 	assert.Contains(t, out, "Latency (total): n/a")
 	assert.Contains(t, out, "Latency (server): n/a")
 	assert.Contains(t, out, "Latency (network): n/a")
@@ -142,6 +145,7 @@ func TestWriteJSONReport_Smoke(t *testing.T) {
 		Compression:  CompressionIdentity,
 		ConnModel:    ConnModelPerWorker,
 		OutputFormat: OutputFormatJSON,
+		Labels:       map[string]string{"mesh": "istio", "payload": "embedding-float"},
 	}
 	s := Summary{
 		Count:      100,
@@ -188,6 +192,11 @@ func TestWriteJSONReport_Smoke(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "embedding-float", entry["shape"], "shapes render as flag-facing names")
 	assert.Equal(t, float64(1), entry["weight"])
+
+	labels, ok := cfgOut["labels"].(map[string]any)
+	require.True(t, ok, "labels must be a JSON object")
+	assert.Equal(t, "istio", labels["mesh"])
+	assert.Equal(t, "embedding-float", labels["payload"])
 
 	sumOut, ok := root["summary"].(map[string]any)
 	require.True(t, ok, "summary block must be present and an object")
@@ -239,6 +248,12 @@ func TestWriteJSONReport_UnknownPayloadShape(t *testing.T) {
 	// Unknown shapes fall back to the proto-generated enum name so output
 	// stays self-describing instead of dropping to a raw integer.
 	assert.Equal(t, "PAYLOAD_SHAPE_UNSPECIFIED", entry["shape"])
+
+	// A nil Labels map must still serialize as an empty object, not null,
+	// so consumers can index into config.labels unconditionally.
+	labels, ok := cfgOut["labels"].(map[string]any)
+	require.True(t, ok, "labels must be a JSON object even when no labels were set")
+	assert.Empty(t, labels)
 }
 
 func TestWriteJSONReport_PropagatesWriterError(t *testing.T) {

@@ -30,6 +30,7 @@ type jsonConfig struct {
 	StringLen    int                `json:"string_len"`
 	Compression  string             `json:"compression"`
 	ConnModel    string             `json:"conn_model"`
+	Labels       map[string]string  `json:"labels"`
 }
 
 type jsonPayloadEntry struct {
@@ -128,6 +129,12 @@ func newJSONConfig(c *Config) jsonConfig {
 			Weight: e.Weight,
 		}
 	}
+	// Force an empty map instead of nil so the JSON renders {} and consumers
+	// always see the field with a predictable object type.
+	labels := c.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
 	return jsonConfig{
 		Target:       c.Target,
 		Plaintext:    c.Plaintext,
@@ -139,6 +146,7 @@ func newJSONConfig(c *Config) jsonConfig {
 		StringLen:    c.StringLen,
 		Compression:  c.Compression,
 		ConnModel:    c.ConnModel,
+		Labels:       labels,
 	}
 }
 
