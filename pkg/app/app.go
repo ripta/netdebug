@@ -64,7 +64,33 @@ path. Without a mesh, kube-proxy load-balances per connection (L4), so
 connections through the LB. With a mesh, the sidecar load-balances per
 request (L7), so "shared" still spreads work across backends. "per-request"
 forces a fresh TCP+TLS+HTTP/2 handshake on every call regardless of mesh,
-which is the way to surface connection-establishment cost.`,
+which is the way to surface connection-establishment cost.
+
+Interpreting the output. The summary breaks total RPC time into "server"
+(from the EchoResponse.server_duration_ns field set by the handler) and
+"network" (total - server, which is wire time plus any proxy or mesh hops).
+"upstream" appears only when the response carries the
+x-envoy-upstream-service-time header that Envoy sets when an Istio sidecar
+fronts the backend; it covers the server-side proxy plus handler, so
+"network - upstream" isolates the client-proxy plus on-wire portion.
+
+Backends are grouped by kubernetes.pod_name from the response, falling
+back to hostname and then the resolved peer address; the per-row "source"
+identifies which step in the chain produced the key. Backend skew is the
+ratio of max to min across backends, reported separately for request
+count and p99 latency; a large ratio is a single-replica problem, such as
+an overloaded pod, slow disk, or stuck retry loop. "Errors by code"
+buckets failures by gRPC status code and surfaces the top distinct
+messages per bucket.
+
+Service mesh notes. Under Envoy/Istio, the upstream block is present and
+gives a direct read on server-side proxy plus handler time.
+Linkerd2-proxy does not emit an equivalent response-side timing header,
+so the upstream block reads "n/a" under linkerd even when a sidecar is in
+the path; the decomposition stops at total - server = client_proxy +
+network + server_proxy with no in-band split between those three.
+linkerd2-proxy's latency signal lives on the proxy's :4191/metrics
+Prometheus endpoint, which bench does not scrape.`,
 		Example: "netdebug bench --target=127.0.0.1:8080 --payload=embedding-float --embedding-dim=1024 --concurrency=4 --duration=10s",
 		RunE:    runAdapter(b.Run),
 	}
