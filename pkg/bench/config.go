@@ -25,6 +25,13 @@ const (
 	OutputFormatJSON  = "json"
 )
 
+// Config is the full input surface of one bench run. Every flag on
+// `netdebug bench` maps to a field here. Headers carry per-RPC gRPC
+// metadata; Labels are run-tagging key/value pairs that are surfaced
+// in reports and the JSON summary but never sent over the wire.
+// Output defaults to os.Stdout when nil. dialOpts is reserved for
+// tests that need to inject a custom dialer such as bufconn; library
+// callers should leave it zero.
 type Config struct {
 	Target                string
 	Plaintext             bool
@@ -45,6 +52,11 @@ type Config struct {
 	dialOpts []grpc.DialOption
 }
 
+// New returns a Config populated with the bench command's defaults:
+// plaintext localhost target, single worker for ten seconds, an
+// embedding-float payload, identity compression, per-worker
+// connection model, and human-formatted output to stdout. Callers
+// override fields before invoking Run.
 func New() *Config {
 	return &Config{
 		Target:      "127.0.0.1:8080",
@@ -74,6 +86,10 @@ func isValidOutputFormat(s string) bool {
 	return false
 }
 
+// Validate checks every field that the worker pool and report
+// writers rely on. It returns on the first invalid field so the
+// command-line surfaces one diagnostic at a time, in roughly the
+// order the flags appear in --help.
 func (c *Config) Validate() error {
 	if c.Target == "" {
 		return errors.New("target must not be empty")
@@ -128,6 +144,13 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// Run validates the config, drives one bench run, and writes the
+// configured report to c.Output. ctx cancellation stops the workers
+// early; even without cancellation the run bounds itself to
+// c.Duration via an internal timeout, so the call always returns
+// once that elapses. A non-nil error means the run could not start
+// or could not be written; per-RPC failures are aggregated into the
+// report instead.
 func (c *Config) Run(ctx context.Context) error {
 	s, err := c.run(ctx)
 	if err != nil {

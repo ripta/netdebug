@@ -6,6 +6,11 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
+// LatencyStats is the aggregate latency block used four times in
+// Summary, one each for total, server-reported, network-derived, and
+// upstream-header time. Count is the number of samples that
+// contributed; zero means no valid samples, in which case the other
+// fields are zero rather than undefined.
 type LatencyStats struct {
 	Count  int
 	Min    time.Duration
@@ -17,6 +22,19 @@ type LatencyStats struct {
 	P99    time.Duration
 }
 
+// Summary is the aggregated output of aggregate, one per bench run.
+// Count is the number of completed RPCs including errors;
+// Throughput is Count / Elapsed in RPS. ConnModel is the run's
+// connection model, captured here so reports can label the result
+// without re-reading the originating Config. The four LatencyStats
+// fields correspond to wall-clock total, server-reported processing
+// time, the total-minus-server difference that approximates network
+// plus framing, and the x-envoy-upstream-service-time header.
+// Upstream's Count is the subset of results with HasUpstreamTime
+// set, so a Linkerd run shows Count=0 there. Backends and
+// BackendSkew break the run down by
+// backend pod when identification is possible. Errors groups failed
+// RPCs by gRPC status code.
 type Summary struct {
 	Count      int
 	ErrorCount int
