@@ -3,6 +3,8 @@ package app
 import (
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -11,17 +13,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const readmePath = "../../README.md"
+// docSources are the user-facing markdown files whose `netdebug bench`
+// examples are exercised through cobra. Keep the README and every doc that
+// shows bench invocations listed here so flag typos surface as test failures.
+var docSources = []string{
+	"../../README.md",
+	"../../docs/bench-local.md",
+}
 
-// readBenchExamples scans README.md for fenced code blocks and returns
-// every `netdebug bench` invocation. Backslash-continuation lines are
-// joined; trailing shell redirection (`> file`, `>> file`) is stripped
-// so the result tokenizes cleanly into cobra args.
+// readBenchExamples scans the configured doc sources for fenced code blocks
+// and returns every `netdebug bench` invocation found. Backslash-continuation
+// lines are joined; trailing shell redirection (`> file`, `>> file`) is
+// stripped so the result tokenizes cleanly into cobra args.
 func readBenchExamples(t *testing.T) []string {
 	t.Helper()
 
-	b, err := os.ReadFile(readmePath)
-	require.NoError(t, err)
+	var examples []string
+	for _, path := range docSources {
+		abs, err := filepath.Abs(path)
+		require.NoError(t, err)
+		examples = append(examples, readBenchExamplesFrom(t, abs)...)
+	}
+	sort.Strings(examples)
+	return examples
+}
+
+func readBenchExamplesFrom(t *testing.T, path string) []string {
+	t.Helper()
+
+	b, err := os.ReadFile(path)
+	require.NoError(t, err, "reading %s", path)
 
 	var (
 		examples   []string
@@ -77,7 +98,7 @@ func stripContinuation(line string) (string, bool) {
 }
 
 // finalizeExample strips trailing shell redirection (`> file`) since the
-// smoke test feeds args to cobra rather than running a real shell. README
+// smoke test feeds args to cobra rather than running a real shell. Doc
 // examples carry no `>` inside flag values; if that ever changes, this
 // will mangle the command and the per-example subtest will surface the
 // breakage as an unknown-flag error.
@@ -90,7 +111,7 @@ func finalizeExample(s string) string {
 
 func TestReadmeBenchExamples_Parse(t *testing.T) {
 	examples := readBenchExamples(t)
-	require.NotEmpty(t, examples, "no `netdebug bench` examples found in README.md")
+	require.NotEmpty(t, examples, "no `netdebug bench` examples found in doc sources")
 
 	for _, raw := range examples {
 		t.Run(truncateName(raw), func(t *testing.T) {
