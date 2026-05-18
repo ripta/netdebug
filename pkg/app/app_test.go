@@ -19,7 +19,7 @@ func findSubcommand(root *cobra.Command, name string) *cobra.Command {
 
 func TestNewRootCommand_WiresAllSubcommands(t *testing.T) {
 	root := NewRootCommand()
-	for _, name := range []string{"dns", "echo", "listen", "send"} {
+	for _, name := range []string{"bench", "dns", "echo", "listen", "send"} {
 		t.Run(name, func(t *testing.T) {
 			assert.NotNilf(t, findSubcommand(root, name), "subcommand %q not registered", name)
 		})
@@ -33,6 +33,10 @@ type subcommandFlagTest struct {
 }
 
 var subcommandFlagTests = []subcommandFlagTest{
+	{Name: "bench_target", Command: "bench", Flag: "target"},
+	{Name: "bench_plaintext", Command: "bench", Flag: "plaintext"},
+	{Name: "bench_concurrency", Command: "bench", Flag: "concurrency"},
+	{Name: "bench_duration", Command: "bench", Flag: "duration"},
 	{Name: "dns_type", Command: "dns", Flag: "type"},
 	{Name: "dns_server_addr", Command: "dns", Flag: "dns-server-addr"},
 	{Name: "echo_host", Command: "echo", Flag: "host"},

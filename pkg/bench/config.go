@@ -1,0 +1,271 @@
+package bench
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"math/rand/v2"
+	"os"
+	"sort"
+	"sync"
+	"time"
+
+	"google.golang.org/grpc"
+	"k8s.io/klog/v2"
+
+	echov1 "github.com/ripta/netdebug/pkg/echo/v1"
+)
+
+// OutputFormat values accepted by --output. The human form is the default
+// and matches the existing stdout layout; the json form emits a single
+// pretty-printed object.
+const (
+	OutputFormatHuman = "human"
+	OutputFormatJSON  = "json"
+)
+
+// Config is the full input surface of one bench run. Every flag on
+// `netdebug bench` maps to a field here. Headers carry per-RPC gRPC
+// metadata; Labels are run-tagging key/value pairs that are surfaced
+// in reports and the JSON summary but never sent over the wire.
+// Output defaults to os.Stdout when nil. dialOpts is reserved for
+// tests that need to inject a custom dialer such as bufconn; library
+// callers should leave it zero.
+type Config struct {
+	Target                string
+	Plaintext             bool
+	TLSInsecureSkipVerify bool
+	Concurrency           int
+	Duration              time.Duration
+	Payload               PayloadMix
+	EmbeddingDim          int
+	BytesSize             int
+	StringLen             int
+	Compression           string
+	ConnModel             string
+	OutputFormat          string
+	Headers               map[string]string
+	Labels                map[string]string
+	Output                io.Writer
+
+	dialOpts []grpc.DialOption
+}
+
+// New returns a Config populated with the bench command's defaults:
+// plaintext localhost target, single worker for ten seconds, an
+// embedding-float payload, identity compression, per-worker
+// connection model, and human-formatted output to stdout. Callers
+// override fields before invoking Run.
+func New() *Config {
+	return &Config{
+		Target:      "127.0.0.1:8080",
+		Plaintext:   true,
+		Concurrency: 1,
+		Duration:    10 * time.Second,
+		Payload: PayloadMix{
+			{Shape: echov1.PayloadShape_PAYLOAD_SHAPE_EMBEDDING_FLOAT, Weight: 1},
+		},
+		EmbeddingDim: 1024,
+		BytesSize:    1024,
+		StringLen:    1024,
+		Compression:  CompressionIdentity,
+		ConnModel:    ConnModelPerWorker,
+		OutputFormat: OutputFormatHuman,
+		Headers:      map[string]string{},
+		Labels:       map[string]string{},
+		Output:       os.Stdout,
+	}
+}
+
+func isValidOutputFormat(s string) bool {
+	switch s {
+	case OutputFormatHuman, OutputFormatJSON:
+		return true
+	}
+	return false
+}
+
+// Validate checks every field that the worker pool and report
+// writers rely on. It returns on the first invalid field so the
+// command-line surfaces one diagnostic at a time, in roughly the
+// order the flags appear in --help.
+func (c *Config) Validate() error {
+	if c.Target == "" {
+		return errors.New("target must not be empty")
+	}
+	if c.Concurrency < 1 {
+		return errors.New("concurrency must be at least 1")
+	}
+	if c.Duration <= 0 {
+		return errors.New("duration must be greater than zero")
+	}
+	if len(c.Payload) == 0 {
+		return errors.New("payload mix must not be empty")
+	}
+	hasPositive := false
+	for _, e := range c.Payload {
+		if e.Weight > 0 {
+			hasPositive = true
+			break
+		}
+	}
+	if !hasPositive {
+		return errors.New("payload mix must contain at least one entry with weight > 0")
+	}
+	if c.EmbeddingDim < 0 {
+		return errors.New("embedding-dim must be >= 0")
+	}
+	if c.BytesSize < 0 {
+		return errors.New("bytes-size must be >= 0")
+	}
+	if c.StringLen < 0 {
+		return errors.New("string-len must be >= 0")
+	}
+	if !isValidCompression(c.Compression) {
+		return fmt.Errorf("compression %q is not one of identity, gzip, snappy, zstd", c.Compression)
+	}
+	if !isValidConnModel(c.ConnModel) {
+		return fmt.Errorf("conn-model %q is not one of per-worker, shared, per-request", c.ConnModel)
+	}
+	if !isValidOutputFormat(c.OutputFormat) {
+		return fmt.Errorf("output %q is not one of human, json", c.OutputFormat)
+	}
+	for k := range c.Headers {
+		if k == "" {
+			return errors.New("header keys must not be empty")
+		}
+	}
+	for k := range c.Labels {
+		if k == "" {
+			return errors.New("label keys must not be empty")
+		}
+	}
+	return nil
+}
+
+// Run validates the config, drives one bench run, and writes the
+// configured report to c.Output. ctx cancellation stops the workers
+// early; even without cancellation the run bounds itself to
+// c.Duration via an internal timeout, so the call always returns
+// once that elapses. A non-nil error means the run could not start
+// or could not be written; per-RPC failures are aggregated into the
+// report instead.
+func (c *Config) Run(ctx context.Context) error {
+	s, err := c.run(ctx)
+	if err != nil {
+		return err
+	}
+	switch c.OutputFormat {
+	case OutputFormatJSON:
+		return writeJSONReport(c.output(), c, s)
+	default:
+		return writeReport(c.output(), c, s)
+	}
+}
+
+func (c *Config) run(ctx context.Context) (Summary, error) {
+	if err := c.Validate(); err != nil {
+		return Summary{}, err
+	}
+
+	pool, err := newConnPool(c.ConnModel, func() (*grpc.ClientConn, error) {
+		return dial(c.Target, c.Plaintext, c.TLSInsecureSkipVerify, c.dialOpts)
+	})
+	if err != nil {
+		return Summary{}, fmt.Errorf("creating conn pool: %w", err)
+	}
+	defer func() {
+		if cerr := pool.Close(); cerr != nil {
+			klog.ErrorS(cerr, "closing bench conn pool", "target", c.Target)
+		}
+	}()
+
+	runCtx, cancel := context.WithTimeout(ctx, c.Duration)
+	defer cancel()
+
+	selector := NewPayloadSelector(c.Payload)
+	sizes := PayloadSizes{
+		EmbeddingDim: c.EmbeddingDim,
+		BytesSize:    c.BytesSize,
+		StringLen:    c.StringLen,
+	}
+
+	headerKV := headerMetadataKV(c.Headers)
+
+	workers := make([]*worker, c.Concurrency)
+	for i := range workers {
+		workers[i] = &worker{
+			pool:        pool,
+			compression: c.Compression,
+			selector:    selector,
+			sizes:       sizes,
+			headerKV:    headerKV,
+			rng:         rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())),
+		}
+	}
+
+	var wg sync.WaitGroup
+	for _, w := range workers {
+		wg.Add(1)
+		go func(w *worker) {
+			defer wg.Done()
+			w.run(runCtx)
+		}(w)
+	}
+	wg.Wait()
+
+	total := 0
+	for _, w := range workers {
+		total += len(w.results)
+	}
+	results := make([]Result, 0, total)
+	for _, w := range workers {
+		results = append(results, w.results...)
+	}
+
+	return aggregate(results, elapsed(results), c.ConnModel), nil
+}
+
+func (c *Config) output() io.Writer {
+	if c.Output == nil {
+		return os.Stdout
+	}
+	return c.Output
+}
+
+// headerMetadataKV flattens the Headers map into the variadic key/value
+// slice that metadata.AppendToOutgoingContext expects, sorted by key so
+// header order is deterministic across workers and runs.
+func headerMetadataKV(headers map[string]string) []string {
+	if len(headers) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(headers))
+	for k := range headers {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	kv := make([]string, 0, len(keys)*2)
+	for _, k := range keys {
+		kv = append(kv, k, headers[k])
+	}
+	return kv
+}
+
+func elapsed(results []Result) time.Duration {
+	if len(results) == 0 {
+		return 0
+	}
+	earliest := results[0].Start
+	latest := results[0].End
+	for _, r := range results[1:] {
+		if r.Start.Before(earliest) {
+			earliest = r.Start
+		}
+		if r.End.After(latest) {
+			latest = r.End
+		}
+	}
+	return latest.Sub(earliest)
+}

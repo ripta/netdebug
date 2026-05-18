@@ -6,6 +6,7 @@ Subcommands:
   - `echo` runs an HTTP or gRPC echo server.
   - `listen` runs a TCP server.
   - `send` creates a TCP connection and sends a payload.
+  - `bench` benchmarks a gRPC echo server.
 
 ## `dns`
 
@@ -135,3 +136,28 @@ and send stuff to it in a different terminal:
 ```
 date | netdebug send --address=localhost:20202
 ```
+
+## `bench`
+
+`netdebug bench` drives load against `pkg.echo.v1.Echoer/Echo` and prints a
+summary covering throughput, latency, server-vs-network time, per-backend
+breakdown, error grouping, and compression effectiveness. Start a target with
+`netdebug echo --mode=grpc` on one side and run bench on the other.
+
+```
+# Terminal 1
+netdebug echo --mode=grpc --port=8080
+
+# Terminal 2
+netdebug bench --target=127.0.0.1:8080 --payload=embedding-float \
+    --embedding-dim=1024 --concurrency=4 --duration=15s
+```
+
+For TLS targets that use a self-signed certificate, pass
+`--tls-insecure-skip-verify`; omit it to verify against the system trust
+store.
+
+For the payload-shape, compression, and conn-model comparison recipes, see
+[`docs/bench-local.md`](docs/bench-local.md). For deploying the echo server
+and running bench inside a Kubernetes cluster, see
+[`docs/bench-k8s.md`](docs/bench-k8s.md).

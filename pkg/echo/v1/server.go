@@ -4,6 +4,7 @@ import (
 	"context"
 	"runtime"
 	"runtime/debug"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -16,9 +17,19 @@ type Server struct {
 }
 
 func (s *Server) Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, error) {
+	start := time.Now()
+
 	res := result.FromContext(ctx)
 	rsp := EchoResponse{
-		Query: req.Query,
+		Query:   req.Query,
+		Shape:   req.Shape,
+		Payload: echoRequestPayload(req.Payload),
+		Kubernetes: &KubernetesInfo{
+			Hostname:     res.Kubernetes.Hostname,
+			PodName:      res.Kubernetes.PodName,
+			PodNamespace: res.Kubernetes.PodNamespace,
+			PodNode:      res.Kubernetes.PodNode,
+		},
 		Request: &RequestInfo{
 			Protocol:   res.Request.Protocol,
 			RemoteAddr: res.Request.RemoteAddr,
@@ -69,7 +80,29 @@ func (s *Server) Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, err
 		}
 	}
 
+	end := time.Now()
+	rsp.ReceivedAtUnixNano = start.UnixNano()
+	rsp.SentAtUnixNano = end.UnixNano()
+	rsp.ServerDurationNs = end.Sub(start).Nanoseconds()
+
 	return &rsp, nil
+}
+
+func echoRequestPayload(p isEchoRequest_Payload) isEchoResponse_Payload {
+	switch x := p.(type) {
+	case *EchoRequest_StringPayload:
+		return &EchoResponse_StringPayload{StringPayload: x.StringPayload}
+	case *EchoRequest_BytesPayload:
+		return &EchoResponse_BytesPayload{BytesPayload: x.BytesPayload}
+	case *EchoRequest_EmbeddingFloat:
+		return &EchoResponse_EmbeddingFloat{EmbeddingFloat: x.EmbeddingFloat}
+	case *EchoRequest_EmbeddingBytes:
+		return &EchoResponse_EmbeddingBytes{EmbeddingBytes: x.EmbeddingBytes}
+	case *EchoRequest_Mixed:
+		return &EchoResponse_Mixed{Mixed: x.Mixed}
+	default:
+		return nil
+	}
 }
 
 func (s *Server) Status(_ context.Context, req *StatusRequest) (*StatusResponse, error) {

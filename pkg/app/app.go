@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 
+	"github.com/ripta/netdebug/pkg/bench"
 	"github.com/ripta/netdebug/pkg/dns"
 	"github.com/ripta/netdebug/pkg/echo"
 	"github.com/ripta/netdebug/pkg/echo/extensions"
@@ -39,11 +40,75 @@ func NewRootCommand() *cobra.Command {
 
 	_ = cmd.MarkFlagFilename("config", "yaml", "json")
 
+	cmd.AddCommand(newBenchCommand())
 	cmd.AddCommand(newDNSCommand())
 	cmd.AddCommand(newEchoCommand())
 	cmd.AddCommand(newListenCommand())
 	cmd.AddCommand(newSendCommand())
 	cmd.AddCommand(version.NewCommand())
+
+	return cmd
+}
+
+func newBenchCommand() *cobra.Command {
+	b := bench.New()
+	cmd := &cobra.Command{
+		Use:   "bench",
+		Short: "Benchmark a gRPC echo server",
+		Long: `Drive load against a gRPC echo server with configurable payload shape,
+compression, and connection model.
+
+Conn-model semantics differ depending on whether a service mesh is in the
+path. Without a mesh, kube-proxy load-balances per connection (L4), so
+"shared" pins every worker to one backend while "per-worker" gives N
+connections through the LB. With a mesh, the sidecar load-balances per
+request (L7), so "shared" still spreads work across backends. "per-request"
+forces a fresh TCP+TLS+HTTP/2 handshake on every call regardless of mesh,
+which is the way to surface connection-establishment cost.
+
+Interpreting the output. The summary breaks total RPC time into "server"
+(from the EchoResponse.server_duration_ns field set by the handler) and
+"network" (total - server, which is wire time plus any proxy or mesh hops).
+"upstream" appears only when the response carries the
+x-envoy-upstream-service-time header that Envoy sets when an Istio sidecar
+fronts the backend; it covers the server-side proxy plus handler, so
+"network - upstream" isolates the client-proxy plus on-wire portion.
+
+Backends are grouped by kubernetes.pod_name from the response, falling
+back to hostname and then the resolved peer address; the per-row "source"
+identifies which step in the chain produced the key. Backend skew is the
+ratio of max to min across backends, reported separately for request
+count and p99 latency; a large ratio is a single-replica problem, such as
+an overloaded pod, slow disk, or stuck retry loop. "Errors by code"
+buckets failures by gRPC status code and surfaces the top distinct
+messages per bucket.
+
+Service mesh notes. Under Envoy/Istio, the upstream block is present and
+gives a direct read on server-side proxy plus handler time.
+Linkerd2-proxy does not emit an equivalent response-side timing header,
+so the upstream block reads "n/a" under linkerd even when a sidecar is in
+the path; the decomposition stops at total - server = client_proxy +
+network + server_proxy with no in-band split between those three.
+linkerd2-proxy's latency signal lives on the proxy's :4191/metrics
+Prometheus endpoint, which bench does not scrape.`,
+		Example: "netdebug bench --target=127.0.0.1:8080 --payload=embedding-float --embedding-dim=1024 --concurrency=4 --duration=10s",
+		RunE:    runAdapter(b.Run),
+	}
+
+	cmd.Flags().StringVarP(&b.Target, "target", "t", b.Target, "Target address (host:port) of the echo server")
+	cmd.Flags().BoolVar(&b.Plaintext, "plaintext", b.Plaintext, "Use plaintext gRPC instead of TLS")
+	cmd.Flags().BoolVar(&b.TLSInsecureSkipVerify, "tls-insecure-skip-verify", b.TLSInsecureSkipVerify, "Skip TLS certificate verification; only meaningful without --plaintext")
+	cmd.Flags().IntVarP(&b.Concurrency, "concurrency", "c", b.Concurrency, "Number of concurrent workers")
+	cmd.Flags().DurationVarP(&b.Duration, "duration", "d", b.Duration, "Duration of the benchmark run")
+	cmd.Flags().VarP(&b.Payload, "payload", "p", `Payload mix, e.g. "embedding-float" or "embedding-float:50,embedding-bytes:50"`)
+	cmd.Flags().IntVar(&b.EmbeddingDim, "embedding-dim", b.EmbeddingDim, "Dimensions for embedding-float and embedding-bytes payload shapes")
+	cmd.Flags().IntVar(&b.BytesSize, "bytes-size", b.BytesSize, "Size in bytes for the bytes payload shape")
+	cmd.Flags().IntVar(&b.StringLen, "string-len", b.StringLen, "Length in characters for the string payload shape")
+	cmd.Flags().StringVar(&b.Compression, "compression", b.Compression, "Compression codec: identity, gzip, snappy, zstd")
+	cmd.Flags().StringVar(&b.ConnModel, "conn-model", b.ConnModel, "Connection model: per-worker, shared, per-request")
+	cmd.Flags().StringVar(&b.OutputFormat, "output", b.OutputFormat, "Output format: human, json")
+	cmd.Flags().StringToStringVar(&b.Headers, "header", b.Headers, "Repeatable header (key=value) attached to every outgoing gRPC request")
+	cmd.Flags().StringToStringVar(&b.Labels, "label", b.Labels, "Repeatable label (key=value) included verbatim in the JSON summary and the human header")
 
 	return cmd
 }
