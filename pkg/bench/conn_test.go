@@ -22,6 +22,21 @@ func bufconnDialer(lis *bufconn.Listener) dialFunc {
 	}
 }
 
+func TestTLSConfigForBench(t *testing.T) {
+	t.Run("skip-verify on", func(t *testing.T) {
+		cfg := tlsConfigForBench(true)
+		require.NotNil(t, cfg)
+		assert.True(t, cfg.InsecureSkipVerify,
+			"--tls-insecure-skip-verify should disable certificate verification")
+	})
+	t.Run("skip-verify off", func(t *testing.T) {
+		cfg := tlsConfigForBench(false)
+		require.NotNil(t, cfg)
+		assert.False(t, cfg.InsecureSkipVerify,
+			"default TLS path should verify against the system trust store")
+	})
+}
+
 func TestNewConnPool_UnknownModel(t *testing.T) {
 	_, err := newConnPool("round-robin", func() (*grpc.ClientConn, error) {
 		return nil, errors.New("should not be called")

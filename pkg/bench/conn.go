@@ -155,16 +155,29 @@ func (s *perRequestSource) Acquire(_ context.Context) (*grpc.ClientConn, Release
 
 func (s *perRequestSource) Close() error { return nil }
 
+// tlsConfigForBench returns the *tls.Config the bench client uses for non-
+// plaintext targets. When skipVerify is true, the server certificate is
+// accepted unconditionally; otherwise the system trust store is consulted.
+// Pulled out so tests can inspect the resulting config directly without
+// reaching into grpc-go's credentials internals.
+func tlsConfigForBench(skipVerify bool) *tls.Config {
+	if skipVerify {
+		return &tls.Config{InsecureSkipVerify: true}
+	}
+	return &tls.Config{}
+}
+
 // dial constructs a gRPC client targeting target with the credentials and
 // stats handler the bench client always uses. extra dial options are
 // appended last so callers can override defaults (e.g., bufconn dialer in
-// tests).
-func dial(target string, plaintext bool, extra []grpc.DialOption) (*grpc.ClientConn, error) {
+// tests). When plaintext is false, tlsInsecureSkipVerify controls whether
+// the server certificate is verified against the system trust store.
+func dial(target string, plaintext, tlsInsecureSkipVerify bool, extra []grpc.DialOption) (*grpc.ClientConn, error) {
 	var creds credentials.TransportCredentials
 	if plaintext {
 		creds = insecure.NewCredentials()
 	} else {
-		creds = credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})
+		creds = credentials.NewTLS(tlsConfigForBench(tlsInsecureSkipVerify))
 	}
 	opts := append([]grpc.DialOption{
 		grpc.WithTransportCredentials(creds),

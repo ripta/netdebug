@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -200,6 +201,89 @@ func TestRun_CapturesEnvoyUpstreamHeader(t *testing.T) {
 	assert.Equal(t, want, s.Upstream.Min)
 	assert.Equal(t, want, s.Upstream.Max)
 	assert.Equal(t, want, s.Upstream.P50)
+}
+
+// newBufconnHeaderCaptureServer stands up an echo server whose unary
+// interceptor records every call's incoming metadata values for key into
+// a thread-safe slice. The bench client's --header injection should land
+// in metadata.FromIncomingContext on the server side.
+func newBufconnHeaderCaptureServer(t *testing.T, key string) (*bufconn.Listener, *headerSink) {
+	t.Helper()
+
+	sink := &headerSink{}
+	lis := bufconn.Listen(1 << 20)
+	gs := grpc.NewServer(grpc.UnaryInterceptor(
+		func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
+			md, _ := metadata.FromIncomingContext(ctx)
+			sink.add(md.Get(key))
+			return h(ctx, req)
+		},
+	))
+	echov1.RegisterEchoerServer(gs, &echov1.Server{})
+
+	go func() {
+		if err := gs.Serve(lis); err != nil {
+			t.Logf("grpc serve returned: %v", err)
+		}
+	}()
+	t.Cleanup(gs.Stop)
+
+	return lis, sink
+}
+
+type headerSink struct {
+	mu     sync.Mutex
+	values [][]string
+}
+
+func (h *headerSink) add(vals []string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	dup := append([]string(nil), vals...)
+	h.values = append(h.values, dup)
+}
+
+func (h *headerSink) snapshot() [][]string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([][]string, len(h.values))
+	for i, v := range h.values {
+		out[i] = append([]string(nil), v...)
+	}
+	return out
+}
+
+func TestRun_AttachesCustomHeaders(t *testing.T) {
+	const key = "x-test-route"
+	const want = "alpha"
+	lis, sink := newBufconnHeaderCaptureServer(t, key)
+
+	cfg := &Config{
+		Target:       "passthrough://bufnet",
+		Plaintext:    true,
+		Concurrency:  2,
+		Duration:     200 * time.Millisecond,
+		Payload:      defaultMix,
+		Compression:  CompressionIdentity,
+		ConnModel:    ConnModelPerWorker,
+		OutputFormat: OutputFormatHuman,
+		Headers:      map[string]string{key: want},
+		Output:       io.Discard,
+		dialOpts:     bufconnDialOpts(lis),
+	}
+
+	s, err := cfg.run(context.Background())
+	require.NoError(t, err)
+	assert.Greater(t, s.Count, 0, "should issue at least one request")
+	assert.Equal(t, 0, s.ErrorCount)
+
+	calls := sink.snapshot()
+	require.GreaterOrEqual(t, len(calls), s.Count,
+		"interceptor should see every call the client recorded (plus any late cancellations)")
+	for i, vals := range calls {
+		require.Len(t, vals, 1, "call %d: header %q should be set exactly once", i, key)
+		assert.Equal(t, want, vals[0], "call %d: header %q value", i, key)
+	}
 }
 
 func TestRun_BufconnPopulatesSummary(t *testing.T) {

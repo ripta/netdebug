@@ -26,8 +26,11 @@ func TestNew_Defaults(t *testing.T) {
 	assert.Equal(t, CompressionIdentity, c.Compression)
 	assert.Equal(t, ConnModelPerWorker, c.ConnModel)
 	assert.Equal(t, OutputFormatHuman, c.OutputFormat)
+	assert.NotNil(t, c.Headers)
+	assert.Empty(t, c.Headers)
 	assert.NotNil(t, c.Labels)
 	assert.Empty(t, c.Labels)
+	assert.False(t, c.TLSInsecureSkipVerify)
 	assert.NotNil(t, c.Output)
 }
 
@@ -254,6 +257,24 @@ var configValidateTests = []configValidateTest{
 			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
 			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatHuman,
 			Labels: map[string]string{"": "istio"},
+		},
+		WantErr: true,
+	},
+	{
+		Name: "populated headers are accepted",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatHuman,
+			Headers: map[string]string{"x-trace-id": "abc-123"},
+		},
+		WantErr: false,
+	},
+	{
+		Name: "empty header key is rejected",
+		Config: Config{
+			Target: "127.0.0.1:8080", Concurrency: 1, Duration: time.Second,
+			Payload: defaultMix, Compression: CompressionIdentity, ConnModel: ConnModelPerWorker, OutputFormat: OutputFormatHuman,
+			Headers: map[string]string{"": "v"},
 		},
 		WantErr: true,
 	},

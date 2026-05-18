@@ -29,6 +29,7 @@ type worker struct {
 	compression string
 	selector    *PayloadSelector
 	sizes       PayloadSizes
+	headerKV    []string
 	rng         *rand.Rand
 	results     []Result
 }
@@ -74,6 +75,9 @@ func (w *worker) doCall(ctx context.Context, conn *grpc.ClientConn) {
 	req := BuildEchoRequest(w.selector.Pick(w.rng), w.sizes)
 	bag := &wireBytes{}
 	callCtx := contextWithWireBytes(ctx, bag)
+	if len(w.headerKV) > 0 {
+		callCtx = metadata.AppendToOutgoingContext(callCtx, w.headerKV...)
+	}
 	var peerInfo peer.Peer
 	var hdrMD metadata.MD
 	start := time.Now()

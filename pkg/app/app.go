@@ -71,6 +71,7 @@ which is the way to surface connection-establishment cost.`,
 
 	cmd.Flags().StringVarP(&b.Target, "target", "t", b.Target, "Target address (host:port) of the echo server")
 	cmd.Flags().BoolVar(&b.Plaintext, "plaintext", b.Plaintext, "Use plaintext gRPC instead of TLS")
+	cmd.Flags().BoolVar(&b.TLSInsecureSkipVerify, "tls-insecure-skip-verify", b.TLSInsecureSkipVerify, "Skip TLS certificate verification; only meaningful without --plaintext")
 	cmd.Flags().IntVarP(&b.Concurrency, "concurrency", "c", b.Concurrency, "Number of concurrent workers")
 	cmd.Flags().DurationVarP(&b.Duration, "duration", "d", b.Duration, "Duration of the benchmark run")
 	cmd.Flags().VarP(&b.Payload, "payload", "p", `Payload mix, e.g. "embedding-float" or "embedding-float:50,embedding-bytes:50"`)
@@ -80,6 +81,7 @@ which is the way to surface connection-establishment cost.`,
 	cmd.Flags().StringVar(&b.Compression, "compression", b.Compression, "Compression codec: identity, gzip, snappy, zstd")
 	cmd.Flags().StringVar(&b.ConnModel, "conn-model", b.ConnModel, "Connection model: per-worker, shared, per-request")
 	cmd.Flags().StringVar(&b.OutputFormat, "output", b.OutputFormat, "Output format: human, json")
+	cmd.Flags().StringToStringVar(&b.Headers, "header", b.Headers, "Repeatable header (key=value) attached to every outgoing gRPC request")
 	cmd.Flags().StringToStringVar(&b.Labels, "label", b.Labels, "Repeatable label (key=value) included verbatim in the JSON summary and the human header")
 
 	return cmd

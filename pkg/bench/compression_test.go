@@ -120,7 +120,7 @@ func TestRoundTripPerCodec(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			lis := newBufconnEchoServer(t)
 
-			conn, err := dial("passthrough://bufnet", true, bufconnDialOpts(lis))
+			conn, err := dial("passthrough://bufnet", true, false, bufconnDialOpts(lis))
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = conn.Close() })
 

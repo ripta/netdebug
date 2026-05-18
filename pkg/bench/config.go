@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -25,19 +26,21 @@ const (
 )
 
 type Config struct {
-	Target       string
-	Plaintext    bool
-	Concurrency  int
-	Duration     time.Duration
-	Payload      PayloadMix
-	EmbeddingDim int
-	BytesSize    int
-	StringLen    int
-	Compression  string
-	ConnModel    string
-	OutputFormat string
-	Labels       map[string]string
-	Output       io.Writer
+	Target                string
+	Plaintext             bool
+	TLSInsecureSkipVerify bool
+	Concurrency           int
+	Duration              time.Duration
+	Payload               PayloadMix
+	EmbeddingDim          int
+	BytesSize             int
+	StringLen             int
+	Compression           string
+	ConnModel             string
+	OutputFormat          string
+	Headers               map[string]string
+	Labels                map[string]string
+	Output                io.Writer
 
 	dialOpts []grpc.DialOption
 }
@@ -57,6 +60,7 @@ func New() *Config {
 		Compression:  CompressionIdentity,
 		ConnModel:    ConnModelPerWorker,
 		OutputFormat: OutputFormatHuman,
+		Headers:      map[string]string{},
 		Labels:       map[string]string{},
 		Output:       os.Stdout,
 	}
@@ -111,6 +115,11 @@ func (c *Config) Validate() error {
 	if !isValidOutputFormat(c.OutputFormat) {
 		return fmt.Errorf("output %q is not one of human, json", c.OutputFormat)
 	}
+	for k := range c.Headers {
+		if k == "" {
+			return errors.New("header keys must not be empty")
+		}
+	}
 	for k := range c.Labels {
 		if k == "" {
 			return errors.New("label keys must not be empty")
@@ -138,7 +147,7 @@ func (c *Config) run(ctx context.Context) (Summary, error) {
 	}
 
 	pool, err := newConnPool(c.ConnModel, func() (*grpc.ClientConn, error) {
-		return dial(c.Target, c.Plaintext, c.dialOpts)
+		return dial(c.Target, c.Plaintext, c.TLSInsecureSkipVerify, c.dialOpts)
 	})
 	if err != nil {
 		return Summary{}, fmt.Errorf("creating conn pool: %w", err)
@@ -159,6 +168,8 @@ func (c *Config) run(ctx context.Context) (Summary, error) {
 		StringLen:    c.StringLen,
 	}
 
+	headerKV := headerMetadataKV(c.Headers)
+
 	workers := make([]*worker, c.Concurrency)
 	for i := range workers {
 		workers[i] = &worker{
@@ -166,6 +177,7 @@ func (c *Config) run(ctx context.Context) (Summary, error) {
 			compression: c.Compression,
 			selector:    selector,
 			sizes:       sizes,
+			headerKV:    headerKV,
 			rng:         rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())),
 		}
 	}
@@ -197,6 +209,25 @@ func (c *Config) output() io.Writer {
 		return os.Stdout
 	}
 	return c.Output
+}
+
+// headerMetadataKV flattens the Headers map into the variadic key/value
+// slice that metadata.AppendToOutgoingContext expects, sorted by key so
+// header order is deterministic across workers and runs.
+func headerMetadataKV(headers map[string]string) []string {
+	if len(headers) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(headers))
+	for k := range headers {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	kv := make([]string, 0, len(keys)*2)
+	for _, k := range keys {
+		kv = append(kv, k, headers[k])
+	}
+	return kv
 }
 
 func elapsed(results []Result) time.Duration {
