@@ -11,7 +11,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
-	github.com/thediveo/enumflag/v2 v2.2.0
+	github.com/thediveo/enumflag/v2 v2.2.1
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
 	k8s.io/klog/v2 v2.140.0
