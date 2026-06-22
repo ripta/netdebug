@@ -3,7 +3,7 @@ module github.com/ripta/netdebug
 go 1.25.0
 
 require (
-	github.com/coreos/go-oidc/v3 v3.18.0
+	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/go-logr/logr v1.4.3
 	github.com/miekg/dns v1.1.72
 	github.com/mostynb/go-grpc-compression v1.2.3
