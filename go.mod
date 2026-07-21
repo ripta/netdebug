@@ -3,8 +3,8 @@ module github.com/ripta/netdebug
 go 1.25.0
 
 require (
-	github.com/coreos/go-oidc/v3 v3.19.0
-	github.com/go-logr/logr v1.4.3
+	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/go-logr/logr v1.4.4
 	github.com/miekg/dns v1.1.72
 	github.com/mostynb/go-grpc-compression v1.2.3
 	github.com/ripta/rt v0.0.0-20260512063501-2092de13835b
@@ -12,7 +12,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/thediveo/enumflag/v2 v2.2.1
-	google.golang.org/grpc v1.82.0
+	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 	k8s.io/klog/v2 v2.140.0
 )
