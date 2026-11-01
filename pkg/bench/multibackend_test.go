@@ -3,6 +3,7 @@ package bench
 import (
 	"context"
 	"io"
+	"math/rand/v2"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -193,4 +194,47 @@ func TestRun_PerRequest_DialsPerCall(t *testing.T) {
 		"every recorded RPC was served by one of the backends")
 	assert.LessOrEqual(t, sum, be.dialCount(),
 		"no backend served more RPCs than were dialed")
+}
+
+// lapsedDeadlineCtx has a deadline in the past but has not yet observed it:
+// Err stays nil and Done never closes. It freezes the window where gRPC has
+// already failed a call on the run deadline but the context timer has not
+// fired, which a CPU-starved CI builder can stretch across several calls.
+type lapsedDeadlineCtx struct{ context.Context }
+
+func (lapsedDeadlineCtx) Deadline() (time.Time, bool) { return time.Now().Add(-time.Second), true }
+func (lapsedDeadlineCtx) Done() <-chan struct{}       { return nil }
+func (lapsedDeadlineCtx) Err() error                  { return nil }
+
+func TestWorker_StopsAfterDroppedCall(t *testing.T) {
+	be := newBufconnEchoBackends(t)
+	cfg := multibackendConfig(be, ConnModelPerRequest, 1)
+	pool, err := newConnPool(cfg.ConnModel, func() (*grpc.ClientConn, error) {
+		return dial(cfg.Target, cfg.Plaintext, cfg.TLSInsecureSkipVerify, cfg.dialOpts)
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = pool.Close() })
+
+	w := &worker{
+		pool:        pool,
+		compression: cfg.Compression,
+		selector:    NewPayloadSelector(cfg.Payload),
+		rng:         rand.New(rand.NewPCG(1, 2)),
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w.run(lapsedDeadlineCtx{context.Background()})
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("worker kept looping after a dropped call; %d dials so far", be.dialCount())
+	}
+
+	assert.Empty(t, w.results, "the lapsed-deadline call is dropped, not recorded")
+	assert.LessOrEqual(t, be.dialCount(), int64(1),
+		"the worker stops after its first dropped call")
 }
