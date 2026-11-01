@@ -65,12 +65,19 @@ func (w *worker) run(ctx context.Context) {
 			})
 			continue
 		}
-		w.doCall(ctx, conn)
+		dropped := w.doCall(ctx, conn)
 		release()
+		if dropped {
+			return
+		}
 	}
 }
 
-func (w *worker) doCall(ctx context.Context, conn *grpc.ClientConn) {
+// doCall issues one Echo RPC and records its result. It reports true when
+// the call was dropped as a run-timeout cancellation. The caller must then
+// stop. gRPC can fail the call on the run deadline before ctx.Err() turns
+// non-nil, and looping again would dial and drop more calls.
+func (w *worker) doCall(ctx context.Context, conn *grpc.ClientConn) bool {
 	client := echov1.NewEchoerClient(conn)
 	req := BuildEchoRequest(w.selector.Pick(w.rng), w.sizes)
 	bag := &wireBytes{}
@@ -89,7 +96,7 @@ func (w *worker) doCall(ctx context.Context, conn *grpc.ClientConn) {
 	end := time.Now()
 
 	if err != nil && (ctx.Err() != nil || isCancellation(err)) {
-		return
+		return true
 	}
 
 	r := Result{
@@ -119,6 +126,7 @@ func (w *worker) doCall(ctx context.Context, conn *grpc.ClientConn) {
 		}
 	}
 	w.results = append(w.results, r)
+	return false
 }
 
 // isCancellation reports whether an Echo error is a deadline or cancellation
