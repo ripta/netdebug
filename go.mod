@@ -9,7 +9,7 @@ require (
 	github.com/mostynb/go-grpc-compression v1.2.3
 	github.com/ripta/rt v0.0.0-20260512063501-2092de13835b
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/pflag v1.1.0
 	github.com/stretchr/testify v1.12.1
 	github.com/thediveo/enumflag/v2 v2.2.1
 	google.golang.org/grpc v1.85.0
